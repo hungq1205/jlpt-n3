@@ -1,0 +1,6 @@
+{
+  "name": "Japanese-Vietnamese Flashcards",
+  "description": "Clean, responsive Japanese vocabulary flashcards with Kanji/Kana toggle, Hán-Việt, and examples for PC and mobile.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
