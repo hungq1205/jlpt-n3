@@ -331,41 +331,172 @@ rt.ruby-text {
   font-size: 15px;
 }
 
-/* ---------- FAB (kana button / hold) ---------- */
+/* ---------- Draggable FABs (Kana & Han-Viet) ---------- */
 .fab {
   position: fixed;
-  bottom: 82px;
-  right: 18px;
-  width: 52px;
-  height: 52px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  background: #3b82f6;
-  color: #fff;
   border: none;
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 700;
-  cursor: pointer;
+  cursor: grab;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(59,130,246,.4);
-  transition: transform .12s, background .12s, box-shadow .12s;
-  z-index: 40;
+  z-index: 50;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   touch-action: none;
+  box-sizing: border-box;
 }
 
-.fab:hover {
+.fab:active {
+  cursor: grabbing;
+}
+
+.fab.is-dragging {
+  cursor: grabbing !important;
+}
+
+.fab-hanviet.is-dragging {
+  transform: scale(0.3333) !important;
+  transform-origin: center center;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.75), 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
+.fab-kana.is-dragging {
+  transform: scale(1) !important;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.6) !important;
+}
+
+.fab-kana {
+  background: #3b82f6;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(59,130,246,.45);
+}
+
+.fab-kana:hover {
   background: #2563eb;
-  box-shadow: 0 6px 18px rgba(37,99,235,.5);
+  box-shadow: 0 6px 18px rgba(37,99,235,.55);
 }
 
-.fab:active, .fab.pressed {
-  transform: scale(.88);
+.fab-kana:active, .fab-kana.pressed {
   background: #1d4ed8;
-  box-shadow: 0 2px 8px rgba(29,78,216,.5);
+  transform: scale(.92);
+}
+
+.fab-hanviet {
+  background: #7c3aed;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(124,58,237,.45);
+}
+
+.fab-hanviet:hover {
+  background: #6d28d9;
+  box-shadow: 0 6px 18px rgba(109,40,217,.55);
+}
+
+.fab-hanviet:active, .fab-hanviet.pressed {
+  background: #5b21b6;
+  transform: scale(.92);
+}
+
+/* Pulse animation when tap-select mode is armed */
+.fab-hanviet.active-mode {
+  background: #7c3aed;
+  box-shadow: 0 0 0 4px rgba(167,139,250,.5), 0 6px 20px rgba(124,58,237,.6);
+  animation: pulse-ring 1.6s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes pulse-ring {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(167,139,250,.4), 0 4px 14px rgba(124,58,237,.4);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(167,139,250,.65), 0 8px 22px rgba(124,58,237,.6);
+  }
+}
+
+/* Floating Han-Viet Bubble */
+.hanviet-bubble {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  filter: drop-shadow(0 10px 25px rgba(0,0,0,0.3));
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  animation: bubble-appear 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes bubble-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.hanviet-bubble .bubble-content {
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  white-space: nowrap;
+  max-width: 88vw;
+}
+
+.hanviet-bubble .bubble-hv {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.8px;
+  color: #fbbf24;
+  text-transform: uppercase;
+}
+
+.hanviet-bubble .bubble-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.hanviet-bubble .bubble-arrow {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+}
+
+.hanviet-bubble .arrow-down {
+  border-top: 7px solid #0f172a;
+  margin-top: -1px;
+}
+
+.hanviet-bubble .arrow-up {
+  border-bottom: 7px solid #0f172a;
+  margin-bottom: -1px;
+}
+
+/* Highlight for target Kanji when selected / hovered */
+.kanji-target-highlighted {
+  outline: 2px solid #8b5cf6 !important;
+  outline-offset: 3px !important;
+  border-radius: 4px !important;
+  background-color: rgba(139, 92, 246, 0.12) !important;
+  transition: outline 0.12s, background-color 0.12s;
 }
 
 /* ---------- furigana / kana overlay ---------- */

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Volume2, Search, RotateCw, Check, Copy, Download, X } from 'lucide-react';
 import { DATA, Flashcard } from './data/flashcards';
 import { speakJapanese } from './utils/speech';
+import { getHanViet } from './data/hanVietDict';
+import { getSnapCoords, findNearestSnapPosition, findSnapPositionWithinRange, SnapPosition, Point } from './utils/snapLayout';
 
 export default function App() {
   // Navigation & state
@@ -13,9 +15,56 @@ export default function App() {
   const [showKana, setShowKana] = useState<boolean>(false);
   const [isFabPressed, setIsFabPressed] = useState<boolean>(false);
 
+  // Draggable FAB snap positions (default to bottom-right corner)
+  const [snapKana, setSnapKana] = useState<SnapPosition>('BR');
+  const [snapHanViet, setSnapHanViet] = useState<SnapPosition>('BR');
+  const [dragBtn, setDragBtn] = useState<'kana' | 'hanviet' | null>(null);
+  const [dragPos, setDragPos] = useState<Point | null>(null);
+  const [dragOrigin, setDragOrigin] = useState<Point | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragStartRef = useRef<{ x: number; y: number; moved: boolean }>({ x: 0, y: 0, moved: false });
+
+  // Window viewport size tracking
+  const [winSize, setWinSize] = useState<{ w: number; h: number }>({
+    w: typeof window !== 'undefined' ? window.innerWidth : 400,
+    h: typeof window !== 'undefined' ? window.innerHeight : 700,
+  });
+
+  // Han-Viet bubble inspection & tap-mode state
+  const [isHanVietMode, setIsHanVietMode] = useState<boolean>(false);
+  const [activeBubble, setActiveBubble] = useState<{
+    kanji: string;
+    hanViet: string;
+    rect: DOMRect;
+    element: HTMLElement;
+    isFlipped: boolean;
+  } | null>(null);
+
   // JSON modal
   const [showJsonModal, setShowJsonModal] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+  const suppressClickUntilRef = useRef<number>(0);
+
+  // Global event guard: suppress click/pointer events if they originated from dismissing Han-Viet mode
+  useEffect(() => {
+    const blockSuppressed = (e: Event) => {
+      if (Date.now() < suppressClickUntilRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    window.addEventListener('click', blockSuppressed, true);
+    window.addEventListener('pointerup', blockSuppressed, true);
+    window.addEventListener('touchend', blockSuppressed, true);
+
+    return () => {
+      window.removeEventListener('click', blockSuppressed, true);
+      window.removeEventListener('pointerup', blockSuppressed, true);
+      window.removeEventListener('touchend', blockSuppressed, true);
+    };
+  }, []);
 
   // List view search
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -140,6 +189,138 @@ export default function App() {
     };
   }, [showJsonModal, activeTab, handleFlip, handleNext, handlePrev, handleToggleMode, currentCard, startReveal, stopReveal]);
 
+  // Track window resizing for snap calculations
+  useEffect(() => {
+    const handleResize = () => setWinSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Helper to find nearest kanji word on screen (excluding hidden faces of the flashcard)
+  const findNearestKanji = useCallback((x: number, y: number, maxDist = 50) => {
+    const elements = document.querySelectorAll<HTMLElement>('[data-kanji-target="true"]');
+    let closestEl: HTMLElement | null = null;
+    let closestDist = Infinity;
+    let closestRect: DOMRect | null = null;
+
+    elements.forEach((el) => {
+      // The hidden face in the flashcard should not be detectable with Han-Viet reveal
+      const face = el.closest('.face');
+      if (face) {
+        if (face.classList.contains('back') && !flipped) return;
+        if (face.classList.contains('front') && flipped) return;
+      }
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      // Distance from point (x, y) to the actual boundary of the kanji element
+      const dx = Math.max(rect.left - x, 0, x - rect.right);
+      const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+      const d = Math.hypot(dx, dy);
+      if (d < closestDist && d <= maxDist) {
+        closestDist = d;
+        closestEl = el;
+        closestRect = rect;
+      }
+    });
+
+    if (closestEl && closestRect) {
+      const el = closestEl as HTMLElement;
+      const targetRect = closestRect as DOMRect;
+      const kanji = el.getAttribute('data-kanji') || el.innerText || '';
+      const hanViet = el.getAttribute('data-hanviet') || getHanViet(kanji);
+      return {
+        element: el,
+        kanji,
+        hanViet,
+        rect: targetRect,
+        isFlipped: targetRect.top < 85,
+      };
+    }
+    return null;
+  }, [flipped]);
+
+  // Highlight active target kanji
+  useEffect(() => {
+    if (activeBubble?.element) {
+      const el = activeBubble.element;
+      el.classList.add('kanji-target-highlighted');
+      return () => {
+        el.classList.remove('kanji-target-highlighted');
+      };
+    }
+  }, [activeBubble]);
+
+  // Intercept taps when tap-selecting kanji word for Han-Viet without triggering other clicks
+  useEffect(() => {
+    if (!isHanVietMode) return;
+
+    const handleCapturePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      // Let interactions on the Han-Viet FAB or Kana FAB pass through
+      if (target && (target.closest('.fab-hanviet') || target.closest('.fab-kana'))) {
+        return;
+      }
+
+      // Prevent triggering other elements (card flip, speech audio, buttons, etc.)
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      const clientX = 'touches' in e ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+
+      // Find snappable kanji within 30px proximity only
+      const found = findNearestKanji(clientX, clientY, 30);
+      if (found) {
+        setActiveBubble(found);
+      } else {
+        // When tap onto nowhere (no snappable Han-Viet), turn off Han-Viet mode
+        // and suppress any click/pointer event from triggering other elements
+        suppressClickUntilRef.current = Date.now() + 450;
+        setIsHanVietMode(false);
+        setActiveBubble(null);
+      }
+    };
+
+    window.addEventListener('click', handleCapturePointerDown, true);
+    window.addEventListener('pointerdown', handleCapturePointerDown, true);
+    window.addEventListener('pointerup', handleCapturePointerDown, true);
+    return () => {
+      window.removeEventListener('click', handleCapturePointerDown, true);
+      window.removeEventListener('pointerdown', handleCapturePointerDown, true);
+      window.removeEventListener('pointerup', handleCapturePointerDown, true);
+    };
+  }, [isHanVietMode, findNearestKanji]);
+
+  // Compute resting coordinates for draggable FABs
+  const snapCoords = useMemo(() => {
+    return getSnapCoords(snapKana, snapHanViet, winSize.w, winSize.h);
+  }, [snapKana, snapHanViet, winSize.w, winSize.h]);
+
+  // Compute predicted release snap destination while dragging (only if within small range)
+  const targetSnapCoords = useMemo(() => {
+    if (!isDragging || !dragBtn || !dragPos) return null;
+    const currentCenterX = dragPos.x + 25;
+    const currentCenterY = dragPos.y + 25;
+    const matchedSnap = findSnapPositionWithinRange(
+      currentCenterX,
+      currentCenterY,
+      winSize.w,
+      winSize.h,
+      dragBtn,
+      dragBtn === 'kana' ? snapHanViet : snapKana
+    );
+    if (!matchedSnap) return null;
+    if (dragBtn === 'kana') {
+      const coords = getSnapCoords(matchedSnap, snapHanViet, winSize.w, winSize.h);
+      return { x: coords.kana.x + 25, y: coords.kana.y + 25 };
+    } else {
+      const coords = getSnapCoords(snapKana, matchedSnap, winSize.w, winSize.h);
+      return { x: coords.hanViet.x + 25, y: coords.hanViet.y + 25 };
+    }
+  }, [isDragging, dragBtn, dragPos, snapKana, snapHanViet, winSize.w, winSize.h]);
+
   // Sync kana class with body
   useEffect(() => {
     if (showKana) {
@@ -178,12 +359,18 @@ export default function App() {
     }
   };
 
-  // Render Japanese word with kana overlay
+  // Render Japanese word with kana overlay and kanji target data
   const renderJapaneseWord = (w: Flashcard, showAudio = true) => {
     const hasKanji = w.kanji && w.kanji !== w.kana;
     return (
       <span className="inline-flex items-center gap-2">
-        <span className="jp-word-container">
+        <span
+          className="jp-word-container"
+          data-kanji-target="true"
+          data-kanji={w.kanji}
+          data-hanviet={w.hanViet}
+          style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
+        >
           {hasKanji && <span className="kana-overlay">{w.kana}</span>}
           <span className="kanji-text">{w.kanji}</span>
         </span>
@@ -222,7 +409,13 @@ export default function App() {
       const furigana = match[2];
 
       nodes.push(
-        <ruby key={`rb-${idx++}`}>
+        <ruby
+          key={`rb-${idx++}`}
+          data-kanji-target="true"
+          data-kanji={kanji}
+          data-hanviet={getHanViet(kanji)}
+          style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
+        >
           {kanji}
           <rt className="ruby-text">{furigana}</rt>
         </ruby>
@@ -524,13 +717,7 @@ export default function App() {
                     border: '1px solid #f0f1f4',
                     background: '#fff',
                     boxShadow: '0 1px 3px rgba(0,0,0,.03)',
-                    cursor: 'pointer',
-                    transition: 'all .15s',
-                  }}
-                  onClick={() => {
-                    if (originalIndex !== -1) setPos(originalIndex);
-                    setFlipped(false);
-                    setActiveTab('flashcard');
+                    cursor: 'default',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -539,7 +726,18 @@ export default function App() {
                         #{w.id}
                       </span>
                       {/* Japanese Word with Furigana / Kana reveal on hold */}
-                      <span className="jp-word-container" style={{ fontSize: '18px', fontWeight: '700', color: '#111827' }}>
+                      <span
+                        className="jp-word-container"
+                        data-kanji-target="true"
+                        data-kanji={w.kanji}
+                        data-hanviet={w.hanViet}
+                        style={{
+                          fontSize: '18px',
+                          fontWeight: '700',
+                          color: '#111827',
+                          cursor: isHanVietMode ? 'crosshair' : 'inherit',
+                        }}
+                      >
                         {w.kanji !== w.kana && <span className="kana-overlay">{w.kana}</span>}
                         <span className="kanji-text">{w.kanji}</span>
                       </span>
@@ -683,7 +881,13 @@ export default function App() {
                         }}
                       >
                         {matchedCard ? (
-                          <span className="jp-word-container">
+                          <span
+                            className="jp-word-container"
+                            data-kanji-target="true"
+                            data-kanji={matchedCard.kanji}
+                            data-hanviet={matchedCard.hanViet}
+                            style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
+                          >
                             {matchedCard.kanji !== matchedCard.kana && (
                               <span className="kana-overlay" style={{ fontSize: '0.65em' }}>
                                 {matchedCard.kana}
@@ -726,34 +930,258 @@ export default function App() {
         </main>
       )}
 
-      {/* Floating Action Button for Kana (Always accessible across Flashcard, List, and Quiz) */}
-      {/* Activates on press/touch, turns off IMMEDIATELY the millisecond tap or mouse is released */}
+      {/* Dashed trail & release destination indicator */}
+      {isDragging && dragPos && (
+        <svg
+          style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100vh',
+            pointerEvents: 'none',
+            zIndex: 48,
+          }}
+        >
+          {/* Dashed straight line trail from initial position (for Han-Viet button only) */}
+          {dragBtn === 'hanviet' && dragOrigin && (
+            <>
+              {/* Initial anchor ring */}
+              <circle
+                cx={dragOrigin.x}
+                cy={dragOrigin.y}
+                r="8"
+                fill="none"
+                stroke="#8b5cf6"
+                strokeWidth="1.5"
+                strokeDasharray="3 3"
+                opacity="0.35"
+              />
+              <circle
+                cx={dragOrigin.x}
+                cy={dragOrigin.y}
+                r="2.5"
+                fill="#8b5cf6"
+                opacity="0.4"
+              />
+              {/* Straight dashed line connecting initial position directly to button */}
+              <line
+                x1={dragOrigin.x}
+                y1={dragOrigin.y}
+                x2={dragPos.x + 25}
+                y2={dragPos.y + 25}
+                stroke="#8b5cf6"
+                strokeWidth="2"
+                strokeDasharray="6 5"
+                strokeLinecap="round"
+                opacity="0.32"
+              />
+            </>
+          )}
+
+          {/* Release destination indicator: small dashed outline circle with very low occupancy color filling */}
+          {targetSnapCoords && (
+            <g
+              transform={`translate(${targetSnapCoords.x}, ${targetSnapCoords.y})`}
+              style={{ transition: 'transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1)' }}
+            >
+              <circle
+                r="24"
+                fill={dragBtn === 'kana' ? '#3b82f6' : '#8b5cf6'}
+                fillOpacity="0.10"
+                stroke={dragBtn === 'kana' ? '#3b82f6' : '#8b5cf6'}
+                strokeWidth="1.8"
+                strokeDasharray="4 3"
+                opacity="0.55"
+              />
+              <circle
+                r="3"
+                fill={dragBtn === 'kana' ? '#3b82f6' : '#8b5cf6'}
+                opacity="0.35"
+              />
+            </g>
+          )}
+        </svg>
+      )}
+
+      {/* Draggable FAB 1: Kana reveal (Hold to reveal, drag to snap to 8 edge/corner positions) */}
       <button
-        className={`fab ${isFabPressed || showKana ? 'pressed' : ''}`}
+        className={`fab fab-kana ${isFabPressed || showKana ? 'pressed' : ''} ${isDragging && dragBtn === 'kana' ? 'is-dragging' : ''}`}
         id="kanaHoldBtn"
-        title="Giữ để xem Kana"
+        title="Kana: Giữ để hiển thị / Kéo để chuyển vị trí"
+        style={{
+          left: `${dragBtn === 'kana' && dragPos ? dragPos.x : snapCoords.kana.x}px`,
+          top: `${dragBtn === 'kana' && dragPos ? dragPos.y : snapCoords.kana.y}px`,
+          transition: dragBtn === 'kana' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+        }}
         onPointerDown={(e) => {
           e.preventDefault();
           try {
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           } catch (err) {}
+          dragStartRef.current = { x: e.clientX, y: e.clientY, moved: false };
+          setDragOrigin({ x: snapCoords.kana.x + 25, y: snapCoords.kana.y + 25 });
+          setDragBtn('kana');
+          setIsDragging(false);
           startReveal();
+        }}
+        onPointerMove={(e) => {
+          if (dragBtn !== 'kana') return;
+          const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
+          if (dist > 6) {
+            dragStartRef.current.moved = true;
+            setIsDragging(true);
+          }
+          setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
         }}
         onPointerUp={(e) => {
           e.preventDefault();
           try {
-            (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+            (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
           } catch (err) {}
           stopReveal();
+
+          if (dragStartRef.current.moved) {
+            const newSnap = findSnapPositionWithinRange(
+              e.clientX,
+              e.clientY,
+              winSize.w,
+              winSize.h,
+              'kana',
+              snapHanViet
+            );
+            if (newSnap) {
+              setSnapKana(newSnap);
+            }
+          }
+          setIsDragging(false);
+          setDragOrigin(null);
+          setDragBtn(null);
+          setDragPos(null);
         }}
         onPointerCancel={(e) => {
           e.preventDefault();
           stopReveal();
+          setIsDragging(false);
+          setDragOrigin(null);
+          setDragBtn(null);
+          setDragPos(null);
         }}
         onContextMenu={(e) => e.preventDefault()}
       >
         あ
       </button>
+
+      {/* Draggable FAB 2: Han-Viet word reveal (Hold & drag to word, or tap then tap word) */}
+      <button
+        className={`fab fab-hanviet ${isHanVietMode ? 'active-mode' : ''} ${isDragging && dragBtn === 'hanviet' ? 'is-dragging' : ''}`}
+        id="hanVietBtn"
+        title="Hán-Việt: Giữ kéo đến chữ Hán, hoặc Chạm rồi chạm vào chữ Hán"
+        style={{
+          left: `${dragBtn === 'hanviet' && dragPos ? dragPos.x : snapCoords.hanViet.x}px`,
+          top: `${dragBtn === 'hanviet' && dragPos ? dragPos.y : snapCoords.hanViet.y}px`,
+          transition: dragBtn === 'hanviet' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+        }}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          try {
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          } catch (err) {}
+          dragStartRef.current = { x: e.clientX, y: e.clientY, moved: false };
+          setDragOrigin({ x: snapCoords.hanViet.x + 25, y: snapCoords.hanViet.y + 25 });
+          setDragBtn('hanviet');
+          setIsDragging(false);
+        }}
+        onPointerMove={(e) => {
+          if (dragBtn !== 'hanviet') return;
+          const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
+          if (dist > 6) {
+            dragStartRef.current.moved = true;
+            setIsDragging(true);
+          }
+          setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
+
+          // While dragging the Han-Viet button, detect nearest Kanji word and show bubble (30px snap radius)
+          const found = findNearestKanji(e.clientX, e.clientY, 30);
+          if (found) {
+            setActiveBubble(found);
+          } else {
+            setActiveBubble(null);
+          }
+        }}
+        onPointerUp={(e) => {
+          e.preventDefault();
+          try {
+            (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+          } catch (err) {}
+
+          if (dragStartRef.current.moved) {
+            // Mode 1: Hold and drag -> release immediately hides text bubble and snaps button!
+            setActiveBubble(null);
+            const newSnap = findSnapPositionWithinRange(
+              e.clientX,
+              e.clientY,
+              winSize.w,
+              winSize.h,
+              'hanviet',
+              snapKana
+            );
+            if (newSnap) {
+              setSnapHanViet(newSnap);
+            }
+          } else {
+            // Mode 2: Tap on Han-Viet button -> toggles tap-select mode
+            if (isHanVietMode) {
+              setIsHanVietMode(false);
+              setActiveBubble(null);
+            } else {
+              setIsHanVietMode(true);
+              setActiveBubble(null);
+            }
+          }
+          setIsDragging(false);
+          setDragOrigin(null);
+          setDragBtn(null);
+          setDragPos(null);
+        }}
+        onPointerCancel={(e) => {
+          e.preventDefault();
+          setActiveBubble(null);
+          setIsDragging(false);
+          setDragOrigin(null);
+          setDragBtn(null);
+          setDragPos(null);
+        }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        漢
+      </button>
+
+      {/* Floating Han-Viet Bubble pointing directly to target word */}
+      {activeBubble && (
+        <div
+          className="hanviet-bubble"
+          style={{
+            position: 'fixed',
+            left: `${Math.max(70, Math.min(winSize.w - 70, activeBubble.rect.left + activeBubble.rect.width / 2))}px`,
+            ...(activeBubble.isFlipped
+              ? {
+                  top: `${activeBubble.rect.bottom + 8}px`,
+                  transform: 'translate(-50%, 0)',
+                }
+              : {
+                  bottom: `${winSize.h - activeBubble.rect.top + 8}px`,
+                  transform: 'translate(-50%, 0)',
+                }),
+          }}
+        >
+          {activeBubble.isFlipped && <div className="bubble-arrow arrow-up" />}
+          <div className="bubble-content">
+            <span className="bubble-hv">{activeBubble.hanViet}</span>
+            <span className="bubble-sub">{activeBubble.kanji}</span>
+          </div>
+          {!activeBubble.isFlipped && <div className="bubble-arrow arrow-down" />}
+        </div>
+      )}
 
       {/* Simple JSON Modal */}
       {showJsonModal && (
