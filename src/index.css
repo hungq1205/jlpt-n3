@@ -225,10 +225,32 @@ body {
 
 .ex-jp {
   font-size: 15.5px;
-  line-height: 1.6;
+  line-height: 1.85;
   color: #111827;
   font-weight: 500;
   margin-bottom: 4px;
+}
+
+ruby {
+  ruby-position: over;
+  -webkit-ruby-position: over;
+  ruby-align: center;
+}
+
+rt.ruby-text {
+  font-size: 0.58em;
+  color: #2563eb;
+  font-weight: 600;
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  line-height: 1;
+  text-align: center;
+}
+
+.show-kana rt.ruby-text {
+  opacity: 1;
 }
 
 .ex-vi {
@@ -331,6 +353,8 @@ body {
   z-index: 40;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
 }
 
 .fab:hover {
