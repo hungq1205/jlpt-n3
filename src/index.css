@@ -370,6 +370,11 @@ rt.ruby-text {
   box-shadow: 0 8px 24px rgba(59, 130, 246, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.6) !important;
 }
 
+.fab-read.is-dragging {
+  transform: scale(1) !important;
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.6) !important;
+}
+
 .fab-kana {
   background: #3b82f6;
   color: #fff;
@@ -401,6 +406,23 @@ rt.ruby-text {
   background: #5b21b6;
   transform: scale(.92);
 }
+
+.fab-read {
+  background: #10b981;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, .45);
+}
+
+.fab-read:hover {
+  background: #059669;
+  box-shadow: 0 6px 18px rgba(5, 150, 105, .55);
+}
+
+.fab-read:active, .fab-read.pressed, .fab-read.speaking {
+  background: #047857;
+  transform: scale(.92);
+}
+
 
 /* Pulse animation when tap-select mode is armed */
 .fab-hanviet.active-mode {

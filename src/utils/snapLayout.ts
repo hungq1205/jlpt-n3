@@ -7,20 +7,48 @@ export interface Point {
   y: number;
 }
 
+export interface SnapCoordsResult {
+  kana: Point;
+  hanViet: Point;
+  read: Point;
+}
+
 /**
- * Calculates resting positions for both buttons (Kana and Han-Viet).
- * If both share the same snap position:
+ * Calculates resting positions for up to 3 buttons (Kana, Han-Viet, Read).
+ * If multiple buttons share the same snap position:
  * - Line up horizontally if at 'TM' (top-middle) or 'BM' (bottom-middle)
  * - Line up vertically for all other 6 positions ('TL', 'TR', 'LM', 'RM', 'BL', 'BR')
  */
 export function getSnapCoords(
   posKana: SnapPosition,
   posHanViet: SnapPosition,
-  windowWidth: number,
-  windowHeight: number,
-  btnSize = 50,
-  gap = 10
-): { kana: Point; hanViet: Point } {
+  arg3?: SnapPosition | number,
+  arg4?: number,
+  arg5?: number,
+  arg6 = 50,
+  arg7 = 10
+): SnapCoordsResult {
+  let posRead: SnapPosition | undefined = undefined;
+  let windowWidth: number;
+  let windowHeight: number;
+  let btnSize = 50;
+  let gap = 10;
+
+  if (typeof arg3 === 'number') {
+    // Called as: getSnapCoords(posKana, posHanViet, windowWidth, windowHeight, btnSize, gap)
+    windowWidth = arg3;
+    windowHeight = arg4 ?? 700;
+    btnSize = arg5 ?? 50;
+    gap = arg6 ?? 10;
+  } else {
+    // Called as: getSnapCoords(posKana, posHanViet, posRead, windowWidth, windowHeight, btnSize, gap)
+    posRead = arg3;
+    windowWidth = arg4 ?? 400;
+    windowHeight = arg5 ?? 700;
+    btnSize = arg6 ?? 50;
+    gap = arg7 ?? 10;
+  }
+
   const mx = 16;
   const myTop = 18;
   const myBot = 82; // Above bottom controls/navigation
@@ -46,55 +74,71 @@ export function getSnapCoords(
     }
   };
 
-  // If different snap positions, simply place each at its own base
-  if (posKana !== posHanViet) {
-    return {
-      kana: getBase(posKana),
-      hanViet: getBase(posHanViet),
-    };
-  }
-
-  // If both share the SAME snap position:
-  const p = posKana;
-
-  // 1. Top or Bottom middle: Line up HORIZONTALLY (Han-Viet left, Kana right)
-  if (p === 'TM' || p === 'BM') {
-    const totalW = btnSize * 2 + gap;
-    const startX = (windowWidth - totalW) / 2;
-    const y = p === 'TM' ? myTop : windowHeight - myBot - btnSize;
-    return {
-      hanViet: { x: startX, y },
-      kana: { x: startX + btnSize + gap, y },
-    };
-  }
-
-  // 2. Bottom corners (BL or BR): Line up VERTICALLY (Kana stacked above Han-Viet)
-  if (p === 'BL' || p === 'BR') {
-    const x = p === 'BL' ? mx : windowWidth - mx - btnSize;
-    const bottomY = windowHeight - myBot - btnSize;
-    return {
-      hanViet: { x, y: bottomY },
-      kana: { x, y: bottomY - (btnSize + gap) },
-    };
-  }
-
-  // 3. Top corners (TL or TR): Line up VERTICALLY (Han-Viet on top, Kana below)
-  if (p === 'TL' || p === 'TR') {
-    const x = p === 'TL' ? mx : windowWidth - mx - btnSize;
-    return {
-      hanViet: { x, y: myTop },
-      kana: { x, y: myTop + btnSize + gap },
-    };
-  }
-
-  // 4. Side middles (LM or RM): Line up VERTICALLY (Han-Viet on top, Kana below)
-  const x = p === 'LM' ? mx : windowWidth - mx - btnSize;
-  const totalH = btnSize * 2 + gap;
-  const startY = (windowHeight - totalH) / 2;
-  return {
-    hanViet: { x, y: startY },
-    kana: { x, y: startY + btnSize + gap },
+  const positions: SnapPosition[] = ['TL', 'TM', 'TR', 'LM', 'RM', 'BL', 'BM', 'BR'];
+  const res: SnapCoordsResult = {
+    kana: { x: 0, y: 0 },
+    hanViet: { x: 0, y: 0 },
+    read: { x: 0, y: 0 },
   };
+
+  // Fixed order for clustered buttons: Han-Viet first, then Kana, then Read
+  const allBtns: Array<{ id: 'hanViet' | 'kana' | 'read'; snap: SnapPosition }> = [
+    { id: 'hanViet', snap: posHanViet },
+    { id: 'kana', snap: posKana },
+  ];
+  if (posRead) {
+    allBtns.push({ id: 'read', snap: posRead });
+  }
+
+  for (const p of positions) {
+    const cluster = allBtns.filter((b) => b.snap === p);
+    const n = cluster.length;
+    if (n === 0) continue;
+
+    if (n === 1) {
+      res[cluster[0].id] = getBase(p);
+      continue;
+    }
+
+    // Multiple buttons at position p:
+    if (p === 'TM' || p === 'BM') {
+      // Horizontal row, centered
+      const totalW = n * btnSize + (n - 1) * gap;
+      const startX = (windowWidth - totalW) / 2;
+      const y = p === 'TM' ? myTop : windowHeight - myBot - btnSize;
+      cluster.forEach((b, idx) => {
+        res[b.id] = { x: startX + idx * (btnSize + gap), y };
+      });
+    } else if (p === 'BL' || p === 'BR') {
+      // Stacking vertically upwards from bottom
+      const x = p === 'BL' ? mx : windowWidth - mx - btnSize;
+      const bottomY = windowHeight - myBot - btnSize;
+      cluster.forEach((b, idx) => {
+        res[b.id] = { x, y: bottomY - idx * (btnSize + gap) };
+      });
+    } else if (p === 'TL' || p === 'TR') {
+      // Stacking vertically downwards from top
+      const x = p === 'TL' ? mx : windowWidth - mx - btnSize;
+      cluster.forEach((b, idx) => {
+        res[b.id] = { x, y: myTop + idx * (btnSize + gap) };
+      });
+    } else {
+      // LM or RM: Centered vertically
+      const x = p === 'LM' ? mx : windowWidth - mx - btnSize;
+      const totalH = n * btnSize + (n - 1) * gap;
+      const startY = (windowHeight - totalH) / 2;
+      cluster.forEach((b, idx) => {
+        res[b.id] = { x, y: startY + idx * (btnSize + gap) };
+      });
+    }
+  }
+
+  // If posRead wasn't provided, assign base of BR
+  if (!posRead) {
+    res.read = getBase('BR');
+  }
+
+  return res;
 }
 
 // Snapping radius for dragging into new place is 80px (increased by 30px from 50px)
@@ -110,20 +154,25 @@ export function findSnapPositionWithinRange(
   y: number,
   windowWidth: number,
   windowHeight: number,
-  forBtn: 'kana' | 'hanviet',
-  otherSnap: SnapPosition,
+  forBtn: 'kana' | 'hanviet' | 'read',
+  activeSnaps: { kana: SnapPosition; hanViet: SnapPosition; read?: SnapPosition } | SnapPosition,
   maxDist = SNAP_RANGE
 ): SnapPosition | null {
   const positions: SnapPosition[] = ['TL', 'TM', 'TR', 'LM', 'RM', 'BL', 'BM', 'BR'];
   let closest: SnapPosition | null = null;
   let minDist = Infinity;
 
+  const snaps =
+    typeof activeSnaps === 'string'
+      ? { kana: activeSnaps, hanViet: activeSnaps }
+      : activeSnaps;
+
   for (const pos of positions) {
-    const coords =
-      forBtn === 'kana'
-        ? getSnapCoords(pos, otherSnap, windowWidth, windowHeight)
-        : getSnapCoords(otherSnap, pos, windowWidth, windowHeight);
-    const targetPt = forBtn === 'kana' ? coords.kana : coords.hanViet;
+    const testKana = forBtn === 'kana' ? pos : snaps.kana;
+    const testHV = forBtn === 'hanviet' ? pos : snaps.hanViet;
+    const testRead = forBtn === 'read' ? pos : snaps.read;
+    const coords = getSnapCoords(testKana, testHV, testRead, windowWidth, windowHeight);
+    const targetPt = forBtn === 'kana' ? coords.kana : forBtn === 'hanviet' ? coords.hanViet : coords.read;
     const center = { x: targetPt.x + 25, y: targetPt.y + 25 };
     const dist = Math.hypot(x - center.x, y - center.y);
     if (dist < minDist) {

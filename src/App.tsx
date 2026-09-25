@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { Volume2, Search, RotateCw, Check, Copy, Download, X } from 'lucide-react';
 import { DATA, Flashcard } from './data/flashcards';
-import { speakJapanese } from './utils/speech';
+import { speakJapanese, speakVietnamese } from './utils/speech';
 import { getHanViet, getKanjiMeaning } from './data/hanVietDict';
 import { getSnapCoords, findNearestSnapPosition, findSnapPositionWithinRange, getSwipeCorner, SnapPosition, Point, SNAP_RANGE } from './utils/snapLayout';
 
@@ -14,11 +14,13 @@ export default function App() {
   const [mode, setMode] = useState<'jp-vi' | 'vi-jp'>('jp-vi');
   const [showKana, setShowKana] = useState<boolean>(false);
   const [isFabPressed, setIsFabPressed] = useState<boolean>(false);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
   // Draggable FAB snap positions (default to bottom-right corner)
   const [snapKana, setSnapKana] = useState<SnapPosition>('BR');
   const [snapHanViet, setSnapHanViet] = useState<SnapPosition>('BR');
-  const [dragBtn, setDragBtn] = useState<'kana' | 'hanviet' | null>(null);
+  const [snapRead, setSnapRead] = useState<SnapPosition>('BR');
+  const [dragBtn, setDragBtn] = useState<'kana' | 'hanviet' | 'read' | null>(null);
   const [dragPos, setDragPos] = useState<Point | null>(null);
   const [dragOrigin, setDragOrigin] = useState<Point | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -263,8 +265,8 @@ export default function App() {
 
     const handleCapturePointerDown = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement | null;
-      // Let interactions on the Han-Viet FAB or Kana FAB pass through
-      if (target && (target.closest('.fab-hanviet') || target.closest('.fab-kana'))) {
+      // Let interactions on the Han-Viet FAB, Kana FAB, or Read FAB pass through
+      if (target && (target.closest('.fab-hanviet') || target.closest('.fab-kana') || target.closest('.fab-read'))) {
         return;
       }
 
@@ -301,8 +303,14 @@ export default function App() {
 
   // Compute resting coordinates for draggable FABs
   const snapCoords = useMemo(() => {
-    return getSnapCoords(snapKana, snapHanViet, winSize.w, winSize.h);
-  }, [snapKana, snapHanViet, winSize.w, winSize.h]);
+    return getSnapCoords(
+      snapKana,
+      snapHanViet,
+      activeTab === 'flashcard' ? snapRead : undefined,
+      winSize.w,
+      winSize.h
+    );
+  }, [snapKana, snapHanViet, snapRead, activeTab, winSize.w, winSize.h]);
 
   // Compute predicted release snap destination while dragging (only if within small range)
   const targetSnapCoords = useMemo(() => {
@@ -315,17 +323,44 @@ export default function App() {
       winSize.w,
       winSize.h,
       dragBtn,
-      dragBtn === 'kana' ? snapHanViet : snapKana
+      {
+        kana: snapKana,
+        hanViet: snapHanViet,
+        read: activeTab === 'flashcard' ? snapRead : undefined,
+      }
     );
     if (!matchedSnap) return null;
-    if (dragBtn === 'kana') {
-      const coords = getSnapCoords(matchedSnap, snapHanViet, winSize.w, winSize.h);
-      return { x: coords.kana.x + 25, y: coords.kana.y + 25 };
+    const coords = getSnapCoords(
+      dragBtn === 'kana' ? matchedSnap : snapKana,
+      dragBtn === 'hanviet' ? matchedSnap : snapHanViet,
+      activeTab === 'flashcard' ? (dragBtn === 'read' ? matchedSnap : snapRead) : undefined,
+      winSize.w,
+      winSize.h
+    );
+    const targetPt = dragBtn === 'kana' ? coords.kana : dragBtn === 'hanviet' ? coords.hanViet : coords.read;
+    if (!targetPt) return null;
+    return { x: targetPt.x + 25, y: targetPt.y + 25 };
+  }, [isDragging, dragBtn, dragPos, snapKana, snapHanViet, snapRead, activeTab, winSize.w, winSize.h]);
+
+  // Floating read button action:
+  // - If click on front face: read word (japanese if jp->vi, vietnamese if vi->jp)
+  // - If click on back face: read sentence (always japanese)
+  const handleReadClick = useCallback(() => {
+    if (activeTab !== 'flashcard' || !currentCard) return;
+
+    setIsSpeaking(true);
+    setTimeout(() => setIsSpeaking(false), 900);
+
+    if (!flipped) {
+      if (mode === 'jp-vi') {
+        speakJapanese(currentCard.kanji);
+      } else {
+        speakVietnamese(currentCard.viet);
+      }
     } else {
-      const coords = getSnapCoords(snapKana, matchedSnap, winSize.w, winSize.h);
-      return { x: coords.hanViet.x + 25, y: coords.hanViet.y + 25 };
+      speakJapanese(currentCard.example);
     }
-  }, [isDragging, dragBtn, dragPos, snapKana, snapHanViet, winSize.w, winSize.h]);
+  }, [activeTab, currentCard, flipped, mode]);
 
   // Sync kana class with body
   useEffect(() => {
@@ -1018,7 +1053,7 @@ export default function App() {
             </>
           )}
 
-          {/* Release destination indicator: small dashed outline circle when moving to a new snap slot (50px range) */}
+          {/* Release destination indicator: small dashed outline circle when moving to a new snap slot (80px range) */}
           {targetSnapCoords && !isProjecting && (
             <g
               transform={`translate(${targetSnapCoords.x}, ${targetSnapCoords.y})`}
@@ -1026,16 +1061,16 @@ export default function App() {
             >
               <circle
                 r="24"
-                fill={dragBtn === 'kana' ? '#3b82f6' : '#8b5cf6'}
+                fill={dragBtn === 'kana' ? '#3b82f6' : dragBtn === 'hanviet' ? '#8b5cf6' : '#10b981'}
                 fillOpacity="0.10"
-                stroke={dragBtn === 'kana' ? '#3b82f6' : '#8b5cf6'}
+                stroke={dragBtn === 'kana' ? '#3b82f6' : dragBtn === 'hanviet' ? '#8b5cf6' : '#10b981'}
                 strokeWidth="1.8"
                 strokeDasharray="4 3"
                 opacity="0.55"
               />
               <circle
                 r="3"
-                fill={dragBtn === 'kana' ? '#3b82f6' : '#8b5cf6'}
+                fill={dragBtn === 'kana' ? '#3b82f6' : dragBtn === 'hanviet' ? '#8b5cf6' : '#10b981'}
                 opacity="0.35"
               />
             </g>
@@ -1122,13 +1157,14 @@ export default function App() {
               winSize.w,
               winSize.h,
               'kana',
-              snapHanViet,
+              { kana: snapKana, hanViet: snapHanViet, read: activeTab === 'flashcard' ? snapRead : undefined },
               SNAP_RANGE
             );
             if (newSnap) {
               setSnapKana(newSnap);
             }
           }
+
           setIsDragging(false);
           setDragOrigin(null);
           setDragBtn(null);
@@ -1266,7 +1302,7 @@ export default function App() {
               winSize.w,
               winSize.h,
               'hanviet',
-              snapKana,
+              { kana: snapKana, hanViet: snapHanViet, read: activeTab === 'flashcard' ? snapRead : undefined },
               SNAP_RANGE
             );
             if (newSnap) {
@@ -1302,6 +1338,119 @@ export default function App() {
       >
         漢
       </button>
+
+      {/* Draggable FAB 3: Floating Read Button (Only appears in flashcard page) */}
+      {activeTab === 'flashcard' && (
+        <button
+          className={`fab fab-read ${isSpeaking ? 'speaking' : ''} ${isDragging && dragBtn === 'read' ? 'is-dragging' : ''}`}
+          id="readFabBtn"
+          title={
+            !flipped
+              ? mode === 'jp-vi'
+                ? 'Đọc từ (Tiếng Nhật)'
+                : 'Đọc từ (Tiếng Việt)'
+              : 'Đọc câu ví dụ (Tiếng Nhật)'
+          }
+          style={{
+            left: `${dragBtn === 'read' && dragPos ? dragPos.x : snapCoords.read.x}px`,
+            top: `${dragBtn === 'read' && dragPos ? dragPos.y : snapCoords.read.y}px`,
+            transition: dragBtn === 'read' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            try {
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            } catch (err) {}
+            const now = performance.now();
+            dragStartRef.current = { x: e.clientX, y: e.clientY, time: now, moved: false, swipeStartTime: 0 };
+            pointerHistoryRef.current = [{ x: e.clientX, y: e.clientY, time: now }];
+            setDragOrigin({ x: snapCoords.read.x + 25, y: snapCoords.read.y + 25 });
+            setDragBtn('read');
+            setIsDragging(false);
+          }}
+          onPointerMove={(e) => {
+            if (dragBtn !== 'read') return;
+            const now = performance.now();
+            pointerHistoryRef.current.push({ x: e.clientX, y: e.clientY, time: now });
+            while (pointerHistoryRef.current.length > 2 && now - pointerHistoryRef.current[0].time > 140) {
+              pointerHistoryRef.current.shift();
+            }
+
+            const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
+            if (dist > 6) {
+              dragStartRef.current.moved = true;
+              setIsDragging(true);
+            }
+            if (dist >= 10 && !dragStartRef.current.swipeStartTime) {
+              dragStartRef.current.swipeStartTime = now;
+            }
+            setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
+          }}
+          onPointerUp={(e) => {
+            e.preventDefault();
+            try {
+              (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            } catch (err) {}
+
+            const now = performance.now();
+            const totalDx = e.clientX - dragStartRef.current.x;
+            const totalDy = e.clientY - dragStartRef.current.y;
+            const totalDist = Math.hypot(totalDx, totalDy);
+
+            const swipeDuration = dragStartRef.current.swipeStartTime
+              ? (now - dragStartRef.current.swipeStartTime)
+              : (now - dragStartRef.current.time);
+            const totalDuration = now - dragStartRef.current.time;
+
+            const history = pointerHistoryRef.current;
+            const recentPt = history.find((p) => now - p.time <= 100);
+            const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
+
+            // Quick swipe flick to corner: if total swipe was < 100ms
+            const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
+
+            if (isQuickSwipe) {
+              const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
+              const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
+              const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
+              const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
+              const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapRead);
+              setSnapRead(targetCorner);
+            } else if (dragStartRef.current.moved) {
+              const newSnap = findSnapPositionWithinRange(
+                e.clientX,
+                e.clientY,
+                winSize.w,
+                winSize.h,
+                'read',
+                { kana: snapKana, hanViet: snapHanViet, read: snapRead },
+                SNAP_RANGE
+              );
+              if (newSnap) {
+                setSnapRead(newSnap);
+              }
+            } else {
+              // Click / Tap -> Read aloud
+              handleReadClick();
+            }
+
+            setIsDragging(false);
+            setDragOrigin(null);
+            setDragBtn(null);
+            setDragPos(null);
+          }}
+          onPointerCancel={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            setDragOrigin(null);
+            setDragBtn(null);
+            setDragPos(null);
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <Volume2 className="w-5 h-5 text-white" />
+        </button>
+      )}
 
       {/* Floating Han-Viet Bubble pointing directly to target word */}
       {activeBubble && (
