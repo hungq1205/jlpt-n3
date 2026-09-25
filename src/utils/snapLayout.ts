@@ -57,53 +57,53 @@ export function getSnapCoords(
   // If both share the SAME snap position:
   const p = posKana;
 
-  // 1. Top or Bottom middle: Line up HORIZONTALLY
+  // 1. Top or Bottom middle: Line up HORIZONTALLY (Han-Viet left, Kana right)
   if (p === 'TM' || p === 'BM') {
     const totalW = btnSize * 2 + gap;
     const startX = (windowWidth - totalW) / 2;
     const y = p === 'TM' ? myTop : windowHeight - myBot - btnSize;
     return {
-      kana: { x: startX, y },
-      hanViet: { x: startX + btnSize + gap, y },
+      hanViet: { x: startX, y },
+      kana: { x: startX + btnSize + gap, y },
     };
   }
 
-  // 2. Bottom corners (BL or BR): Line up VERTICALLY (Han-Viet stacked above Kana)
+  // 2. Bottom corners (BL or BR): Line up VERTICALLY (Kana stacked above Han-Viet)
   if (p === 'BL' || p === 'BR') {
     const x = p === 'BL' ? mx : windowWidth - mx - btnSize;
     const bottomY = windowHeight - myBot - btnSize;
     return {
-      kana: { x, y: bottomY },
-      hanViet: { x, y: bottomY - (btnSize + gap) },
+      hanViet: { x, y: bottomY },
+      kana: { x, y: bottomY - (btnSize + gap) },
     };
   }
 
-  // 3. Top corners (TL or TR): Line up VERTICALLY (Kana on top, Han-Viet below)
+  // 3. Top corners (TL or TR): Line up VERTICALLY (Han-Viet on top, Kana below)
   if (p === 'TL' || p === 'TR') {
     const x = p === 'TL' ? mx : windowWidth - mx - btnSize;
     return {
-      kana: { x, y: myTop },
-      hanViet: { x, y: myTop + btnSize + gap },
+      hanViet: { x, y: myTop },
+      kana: { x, y: myTop + btnSize + gap },
     };
   }
 
-  // 4. Side middles (LM or RM): Line up VERTICALLY
+  // 4. Side middles (LM or RM): Line up VERTICALLY (Han-Viet on top, Kana below)
   const x = p === 'LM' ? mx : windowWidth - mx - btnSize;
   const totalH = btnSize * 2 + gap;
   const startY = (windowHeight - totalH) / 2;
   return {
-    kana: { x, y: startY },
-    hanViet: { x, y: startY + btnSize + gap },
+    hanViet: { x, y: startY },
+    kana: { x, y: startY + btnSize + gap },
   };
 }
 
-// Snapping radius for dragging into new place is 50px
-export const SNAP_RANGE = 50;
+// Snapping radius for dragging into new place is 80px (increased by 30px from 50px)
+export const SNAP_RANGE = 80;
 
 /**
- * Finds a snap position ONLY if the coordinate (x, y) is within a small range (maxDist, default 85px)
+ * Finds a snap position ONLY if the coordinate (x, y) is within a small range (maxDist, default 80px)
  * of that candidate position's resting slot.
- * Returns null if outside the small range.
+ * Returns null if outside the range.
  */
 export function findSnapPositionWithinRange(
   x: number,
@@ -162,4 +162,87 @@ export function findNearestSnapPosition(
   }
 
   return closest;
+}
+
+/**
+ * Resolves the target corner ('TL', 'TR', 'BL', 'BR') based on quick swipe velocity,
+ * starting snap position, and pointer coordinates.
+ * Distributes direction equally between straight horizontal, straight vertical,
+ * and diagonal corner repositions (each spanning an equal 30-degree sector in quadrant).
+ */
+export function getSwipeCorner(
+  vx: number,
+  vy: number,
+  currentX: number,
+  currentY: number,
+  windowWidth: number,
+  windowHeight: number,
+  currentSnap?: SnapPosition
+): SnapPosition {
+  const absVx = Math.abs(vx);
+  const absVy = Math.abs(vy);
+
+  // If current snap position is one of the 4 corners:
+  if (currentSnap && (currentSnap === 'TL' || currentSnap === 'TR' || currentSnap === 'BL' || currentSnap === 'BR')) {
+    const curV: 'T' | 'B' = currentSnap[0] as 'T' | 'B';
+    const curH: 'L' | 'R' = currentSnap[1] as 'L' | 'R';
+
+    // Sector angle division: tan(30deg) = ~0.577, tan(60deg) = ~1.732
+    // 1. Predominantly vertical swipe (within 30 degrees of pure vertical) -> straight vertical corner
+    if (absVy > 1.732 * absVx) {
+      const targetV = vy < 0 ? 'T' : 'B';
+      return `${targetV}${curH}` as SnapPosition;
+    }
+
+    // 2. Predominantly horizontal swipe (within 30 degrees of pure horizontal) -> straight horizontal corner
+    if (absVx > 1.732 * absVy) {
+      const targetH = vx < 0 ? 'L' : 'R';
+      return `${curV}${targetH}` as SnapPosition;
+    }
+
+    // 3. Diagonal swipe (middle 30-degree sector: 30deg to 60deg) -> diagonal corner
+    const targetV = vy < 0 ? 'T' : 'B';
+    const targetH = vx < 0 ? 'L' : 'R';
+    return `${targetV}${targetH}` as SnapPosition;
+  }
+
+  // If current snap position is a side middle (LM, RM) or top/bottom middle (TM, BM):
+  if (currentSnap) {
+    if (currentSnap === 'BM') {
+      if (absVx > 1.732 * absVy) return vx < 0 ? 'BL' : 'BR';
+      return vx < 0 ? 'TL' : 'TR';
+    }
+    if (currentSnap === 'TM') {
+      if (absVx > 1.732 * absVy) return vx < 0 ? 'TL' : 'TR';
+      return vx < 0 ? 'BL' : 'BR';
+    }
+    if (currentSnap === 'LM') {
+      if (absVy > 1.732 * absVx) return vy < 0 ? 'TL' : 'BL';
+      return vy < 0 ? 'TR' : 'BR';
+    }
+    if (currentSnap === 'RM') {
+      if (absVy > 1.732 * absVx) return vy < 0 ? 'TR' : 'BR';
+      return vy < 0 ? 'TL' : 'BL';
+    }
+  }
+
+  // General fallback using current pointer coordinates:
+  // Predominantly vertical: keep current horizontal half, move vertical
+  if (absVy > 1.732 * absVx) {
+    const v: 'T' | 'B' = vy < 0 ? 'T' : 'B';
+    const h: 'L' | 'R' = currentX < windowWidth / 2 ? 'L' : 'R';
+    return `${v}${h}` as SnapPosition;
+  }
+
+  // Predominantly horizontal: keep current vertical half, move horizontal
+  if (absVx > 1.732 * absVy) {
+    const h: 'L' | 'R' = vx < 0 ? 'L' : 'R';
+    const v: 'T' | 'B' = currentY < windowHeight / 2 ? 'T' : 'B';
+    return `${v}${h}` as SnapPosition;
+  }
+
+  // Diagonal
+  const h: 'L' | 'R' = vx < 0 ? 'L' : 'R';
+  const v: 'T' | 'B' = vy < 0 ? 'T' : 'B';
+  return `${v}${h}` as SnapPosition;
 }

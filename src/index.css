@@ -361,10 +361,8 @@ rt.ruby-text {
 }
 
 .fab-hanviet.is-dragging {
-  transform: scale(0.3333) !important;
-  transform-origin: center center;
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.75), 0 4px 14px rgba(0, 0, 0, 0.4) !important;
-  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  transform: scale(1) !important;
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.6) !important;
 }
 
 .fab-kana.is-dragging {
@@ -428,6 +426,7 @@ rt.ruby-text {
   display: flex;
   flex-direction: column;
   align-items: center;
+  max-width: 60vw;
   filter: drop-shadow(0 10px 25px rgba(0,0,0,0.3));
   transition: opacity 0.15s ease, transform 0.15s ease;
   animation: bubble-appear 0.15s cubic-bezier(0.16, 1, 0.3, 1);
@@ -447,16 +446,17 @@ rt.ruby-text {
 .hanviet-bubble .bubble-content {
   background: #0f172a;
   color: #f8fafc;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 8px 14px;
   font-size: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  white-space: nowrap;
-  max-width: 88vw;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  white-space: normal;
+  max-width: 60vw;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35);
 }
 
 .hanviet-bubble .bubble-hv {
@@ -471,6 +471,26 @@ rt.ruby-text {
   font-size: 11px;
   color: #94a3b8;
   font-weight: 500;
+}
+
+.hanviet-bubble .bubble-meaning {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #f1f5f9;
+  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin-top: 3px;
+  padding-top: 3px;
+  line-height: 1.35;
+}
+
+.hanviet-bubble .bubble-meaning .meaning-label {
+  color: #38bdf8;
+  font-weight: 700;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
 }
 
 .hanviet-bubble .bubble-arrow {
@@ -542,6 +562,16 @@ rt.ruby-text {
   padding: 20px;
 }
 
+.pos-subtle {
+  font-size: 11px;
+  font-weight: 500;
+  color: #9ca3af;
+  text-transform: lowercase;
+  letter-spacing: 0.2px;
+  display: inline-flex;
+  align-items: center;
+}
+
 @media (min-width:640px) {
   .app {
     padding: 22px 20px;
@@ -557,10 +587,8 @@ rt.ruby-text {
     font-size: 18px;
   }
   .fab {
-    bottom: 96px;
-    right: 30px;
-    width: 60px;
-    height: 60px;
-    font-size: 24px;
+    width: 54px;
+    height: 54px;
+    font-size: 22px;
   }
 }

@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { Volume2, Search, RotateCw, Check, Copy, Download, X } from 'lucide-react';
 import { DATA, Flashcard } from './data/flashcards';
 import { speakJapanese } from './utils/speech';
-import { getHanViet } from './data/hanVietDict';
-import { getSnapCoords, findNearestSnapPosition, findSnapPositionWithinRange, SnapPosition, Point } from './utils/snapLayout';
+import { getHanViet, getKanjiMeaning } from './data/hanVietDict';
+import { getSnapCoords, findNearestSnapPosition, findSnapPositionWithinRange, getSwipeCorner, SnapPosition, Point, SNAP_RANGE } from './utils/snapLayout';
 
 export default function App() {
   // Navigation & state
@@ -22,7 +22,10 @@ export default function App() {
   const [dragPos, setDragPos] = useState<Point | null>(null);
   const [dragOrigin, setDragOrigin] = useState<Point | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const dragStartRef = useRef<{ x: number; y: number; moved: boolean }>({ x: 0, y: 0, moved: false });
+  const [isProjecting, setIsProjecting] = useState<boolean>(false);
+  const [projPoint, setProjPoint] = useState<Point | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number; time: number; moved: boolean; swipeStartTime: number }>({ x: 0, y: 0, time: 0, moved: false, swipeStartTime: 0 });
+  const pointerHistoryRef = useRef<Array<{ x: number; y: number; time: number }>>([]);
 
   // Window viewport size tracking
   const [winSize, setWinSize] = useState<{ w: number; h: number }>({
@@ -35,6 +38,7 @@ export default function App() {
   const [activeBubble, setActiveBubble] = useState<{
     kanji: string;
     hanViet: string;
+    meaning?: string;
     rect: DOMRect;
     element: HTMLElement;
     isFlipped: boolean;
@@ -197,7 +201,7 @@ export default function App() {
   }, []);
 
   // Helper to find nearest kanji word on screen (excluding hidden faces of the flashcard)
-  const findNearestKanji = useCallback((x: number, y: number, maxDist = 50) => {
+  const findNearestKanji = useCallback((x: number, y: number, maxDist = 30) => {
     const elements = document.querySelectorAll<HTMLElement>('[data-kanji-target="true"]');
     let closestEl: HTMLElement | null = null;
     let closestDist = Infinity;
@@ -217,7 +221,7 @@ export default function App() {
       const dx = Math.max(rect.left - x, 0, x - rect.right);
       const dy = Math.max(rect.top - y, 0, y - rect.bottom);
       const d = Math.hypot(dx, dy);
-      if (d < closestDist && d <= maxDist) {
+      if (d < closestDist && (maxDist === Infinity || d <= maxDist)) {
         closestDist = d;
         closestEl = el;
         closestRect = rect;
@@ -229,10 +233,12 @@ export default function App() {
       const targetRect = closestRect as DOMRect;
       const kanji = el.getAttribute('data-kanji') || el.innerText || '';
       const hanViet = el.getAttribute('data-hanviet') || getHanViet(kanji);
+      const meaning = el.getAttribute('data-meaning') || getKanjiMeaning(kanji);
       return {
         element: el,
         kanji,
         hanViet,
+        meaning,
         rect: targetRect,
         isFlipped: targetRect.top < 85,
       };
@@ -369,6 +375,7 @@ export default function App() {
           data-kanji-target="true"
           data-kanji={w.kanji}
           data-hanviet={w.hanViet}
+          data-meaning={w.viet}
           style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
         >
           {hasKanji && <span className="kana-overlay">{w.kana}</span>}
@@ -414,6 +421,7 @@ export default function App() {
           data-kanji-target="true"
           data-kanji={kanji}
           data-hanviet={getHanViet(kanji)}
+          data-meaning={getKanjiMeaning(kanji)}
           style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
         >
           {kanji}
@@ -578,7 +586,12 @@ export default function App() {
               {/* Front Face */}
               <section className="face front" id="front">
                 <div className="label">
-                  <span>{mode === 'jp-vi' ? '日本語' : 'Tiếng Việt'}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>{mode === 'jp-vi' ? '日本語' : 'Tiếng Việt'}</span>
+                    {currentCard.partOfSpeech && (
+                      <span className="pos-subtle">({currentCard.partOfSpeech.toLowerCase()})</span>
+                    )}
+                  </div>
                   {mode === 'jp-vi' && (
                     <button
                       type="button"
@@ -607,7 +620,12 @@ export default function App() {
               {/* Back Face */}
               <section className="face back" id="back">
                 <div className="label">
-                  <span>Đáp án</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Đáp án</span>
+                    {currentCard.partOfSpeech && (
+                      <span className="pos-subtle">({currentCard.partOfSpeech.toLowerCase()})</span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="audio-btn"
@@ -721,7 +739,7 @@ export default function App() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '12px', fontWeight: '700', color: '#9ca3af' }}>
                         #{w.id}
                       </span>
@@ -751,9 +769,16 @@ export default function App() {
                       </button>
                     </div>
 
-                    <span className="hv" style={{ margin: 0, padding: '3px 9px', fontSize: '11px' }}>
-                      {w.hanViet}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', marginLeft: '8px' }}>
+                      <span className="hv" style={{ margin: 0, padding: '3px 9px', fontSize: '11px' }}>
+                        {w.hanViet}
+                      </span>
+                      {w.partOfSpeech && (
+                        <span className="pos-subtle" style={{ fontSize: '10.5px' }}>
+                          ({w.partOfSpeech.toLowerCase()})
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div style={{ fontSize: '15px', fontWeight: '600', color: '#1f2937', marginBottom: '6px' }}>
@@ -827,11 +852,18 @@ export default function App() {
                     )}
                   </div>
 
-                  {mode === 'jp-vi' && (
-                    <div style={{ fontSize: '14px', color: '#1d4ed8', fontWeight: '600', marginTop: '4px' }}>
-                      {quizCard.hanViet}
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '6px' }}>
+                    {quizCard.partOfSpeech && (
+                      <span className="pos-subtle" style={{ fontSize: '12px' }}>
+                        ({quizCard.partOfSpeech.toLowerCase()})
+                      </span>
+                    )}
+                    {mode === 'jp-vi' && (
+                      <span style={{ fontSize: '14px', color: '#1d4ed8', fontWeight: '600' }}>
+                        {quizCard.hanViet}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* 4 Choices */}
@@ -942,44 +974,52 @@ export default function App() {
             zIndex: 48,
           }}
         >
-          {/* Dashed straight line trail from initial position (for Han-Viet button only) */}
+          {/* Projecting dragging radius (for Han-Viet button) */}
           {dragBtn === 'hanviet' && dragOrigin && (
             <>
-              {/* Initial anchor ring */}
+              {/* 70px projecting dragging radius boundary */}
               <circle
                 cx={dragOrigin.x}
                 cy={dragOrigin.y}
-                r="8"
-                fill="none"
-                stroke="#8b5cf6"
-                strokeWidth="1.5"
-                strokeDasharray="3 3"
-                opacity="0.35"
-              />
-              <circle
-                cx={dragOrigin.x}
-                cy={dragOrigin.y}
-                r="2.5"
+                r="70"
                 fill="#8b5cf6"
-                opacity="0.4"
-              />
-              {/* Straight dashed line connecting initial position directly to button */}
-              <line
-                x1={dragOrigin.x}
-                y1={dragOrigin.y}
-                x2={dragPos.x + 25}
-                y2={dragPos.y + 25}
+                fillOpacity={isProjecting ? 0.08 : 0.02}
                 stroke="#8b5cf6"
-                strokeWidth="2"
-                strokeDasharray="6 5"
-                strokeLinecap="round"
-                opacity="0.32"
+                strokeWidth={isProjecting ? 1.8 : 1.2}
+                strokeDasharray="4 4"
+                opacity={isProjecting ? 0.75 : 0.3}
               />
+              {/* Center anchor dot */}
+              <circle
+                cx={dragOrigin.x}
+                cy={dragOrigin.y}
+                r="3"
+                fill="#8b5cf6"
+                opacity="0.5"
+              />
+              {/* Projected reticle across screenspace */}
+              {isProjecting && projPoint && (
+                <g transform={`translate(${projPoint.x}, ${projPoint.y})`}>
+                  <circle
+                    r="14"
+                    fill="none"
+                    stroke="#8b5cf6"
+                    strokeWidth="1.8"
+                    strokeDasharray="3 3"
+                    opacity="0.75"
+                  />
+                  <circle
+                    r="3"
+                    fill="#8b5cf6"
+                    opacity="0.9"
+                  />
+                </g>
+              )}
             </>
           )}
 
-          {/* Release destination indicator: small dashed outline circle with very low occupancy color filling */}
-          {targetSnapCoords && (
+          {/* Release destination indicator: small dashed outline circle when moving to a new snap slot (50px range) */}
+          {targetSnapCoords && !isProjecting && (
             <g
               transform={`translate(${targetSnapCoords.x}, ${targetSnapCoords.y})`}
               style={{ transition: 'transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1)' }}
@@ -1018,7 +1058,9 @@ export default function App() {
           try {
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           } catch (err) {}
-          dragStartRef.current = { x: e.clientX, y: e.clientY, moved: false };
+          const now = performance.now();
+          dragStartRef.current = { x: e.clientX, y: e.clientY, time: now, moved: false, swipeStartTime: 0 };
+          pointerHistoryRef.current = [{ x: e.clientX, y: e.clientY, time: now }];
           setDragOrigin({ x: snapCoords.kana.x + 25, y: snapCoords.kana.y + 25 });
           setDragBtn('kana');
           setIsDragging(false);
@@ -1026,10 +1068,19 @@ export default function App() {
         }}
         onPointerMove={(e) => {
           if (dragBtn !== 'kana') return;
+          const now = performance.now();
+          pointerHistoryRef.current.push({ x: e.clientX, y: e.clientY, time: now });
+          while (pointerHistoryRef.current.length > 2 && now - pointerHistoryRef.current[0].time > 140) {
+            pointerHistoryRef.current.shift();
+          }
+
           const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
           if (dist > 6) {
             dragStartRef.current.moved = true;
             setIsDragging(true);
+          }
+          if (dist >= 10 && !dragStartRef.current.swipeStartTime) {
+            dragStartRef.current.swipeStartTime = now;
           }
           setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
         }}
@@ -1040,14 +1091,39 @@ export default function App() {
           } catch (err) {}
           stopReveal();
 
-          if (dragStartRef.current.moved) {
+          const now = performance.now();
+          const totalDx = e.clientX - dragStartRef.current.x;
+          const totalDy = e.clientY - dragStartRef.current.y;
+          const totalDist = Math.hypot(totalDx, totalDy);
+
+          const swipeDuration = dragStartRef.current.swipeStartTime
+            ? (now - dragStartRef.current.swipeStartTime)
+            : (now - dragStartRef.current.time);
+          const totalDuration = now - dragStartRef.current.time;
+
+          const history = pointerHistoryRef.current;
+          const recentPt = history.find((p) => now - p.time <= 100);
+          const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
+
+          // Quick swipe flick to corner: if total swipe was < 100ms
+          const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
+
+          if (isQuickSwipe) {
+            const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
+            const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
+            const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
+            const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
+            const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapKana);
+            setSnapKana(targetCorner);
+          } else if (dragStartRef.current.moved) {
             const newSnap = findSnapPositionWithinRange(
               e.clientX,
               e.clientY,
               winSize.w,
               winSize.h,
               'kana',
-              snapHanViet
+              snapHanViet,
+              SNAP_RANGE
             );
             if (newSnap) {
               setSnapKana(newSnap);
@@ -1071,11 +1147,11 @@ export default function App() {
         あ
       </button>
 
-      {/* Draggable FAB 2: Han-Viet word reveal (Hold & drag to word, or tap then tap word) */}
+      {/* Draggable FAB 2: Han-Viet word reveal (Within 70px = Project to screenspace; Outside 70px = Move button) */}
       <button
         className={`fab fab-hanviet ${isHanVietMode ? 'active-mode' : ''} ${isDragging && dragBtn === 'hanviet' ? 'is-dragging' : ''}`}
         id="hanVietBtn"
-        title="Hán-Việt: Giữ kéo đến chữ Hán, hoặc Chạm rồi chạm vào chữ Hán"
+        title="Hán-Việt: Rê trong bán kính 70px để quét toàn màn hình / Kéo ra ngoài để di chuyển nút"
         style={{
           left: `${dragBtn === 'hanviet' && dragPos ? dragPos.x : snapCoords.hanViet.x}px`,
           top: `${dragBtn === 'hanviet' && dragPos ? dragPos.y : snapCoords.hanViet.y}px`,
@@ -1086,25 +1162,67 @@ export default function App() {
           try {
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           } catch (err) {}
-          dragStartRef.current = { x: e.clientX, y: e.clientY, moved: false };
+          const now = performance.now();
+          dragStartRef.current = { x: e.clientX, y: e.clientY, time: now, moved: false, swipeStartTime: 0 };
+          pointerHistoryRef.current = [{ x: e.clientX, y: e.clientY, time: now }];
           setDragOrigin({ x: snapCoords.hanViet.x + 25, y: snapCoords.hanViet.y + 25 });
           setDragBtn('hanviet');
           setIsDragging(false);
+          setIsProjecting(false);
+          setProjPoint(null);
         }}
         onPointerMove={(e) => {
           if (dragBtn !== 'hanviet') return;
-          const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
+          const now = performance.now();
+          pointerHistoryRef.current.push({ x: e.clientX, y: e.clientY, time: now });
+          while (pointerHistoryRef.current.length > 2 && now - pointerHistoryRef.current[0].time > 140) {
+            pointerHistoryRef.current.shift();
+          }
+
+          const dx = e.clientX - dragStartRef.current.x;
+          const dy = e.clientY - dragStartRef.current.y;
+          const dist = Math.hypot(dx, dy);
+
           if (dist > 6) {
             dragStartRef.current.moved = true;
             setIsDragging(true);
           }
+          if (dist >= 10 && !dragStartRef.current.swipeStartTime) {
+            dragStartRef.current.swipeStartTime = now;
+          }
           setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
 
-          // While dragging the Han-Viet button, detect nearest Kanji word and show bubble (30px snap radius)
-          const found = findNearestKanji(e.clientX, e.clientY, 30);
-          if (found) {
-            setActiveBubble(found);
+          // Drag within 70px range: project to screen space & snap to closest Kanji (70px snap range limit)
+          if (dist <= 70) {
+            setIsProjecting(true);
+            const originX = snapCoords.hanViet.x + 25;
+            const originY = snapCoords.hanViet.y + 25;
+
+            // Calculate max distance to the 4 corners of the viewport
+            const cornerDists = [
+              Math.hypot(0 - originX, 0 - originY),
+              Math.hypot(winSize.w - originX, 0 - originY),
+              Math.hypot(0 - originX, winSize.h - originY),
+              Math.hypot(winSize.w - originX, winSize.h - originY),
+            ];
+            const maxCornerDist = Math.max(...cornerDists);
+            const scale = maxCornerDist / 70;
+
+            const projX = Math.max(0, Math.min(winSize.w, originX + dx * scale));
+            const projY = Math.max(0, Math.min(winSize.h, originY + dy * scale));
+            setProjPoint({ x: projX, y: projY });
+
+            // Snap to closest kanji on screen within 70px snap range limit
+            const found = findNearestKanji(projX, projY, 70);
+            if (found) {
+              setActiveBubble(found);
+            } else {
+              setActiveBubble(null);
+            }
           } else {
+            // Drag outside 70px range: user wants to move the button!
+            setIsProjecting(false);
+            setProjPoint(null);
             setActiveBubble(null);
           }
         }}
@@ -1114,8 +1232,33 @@ export default function App() {
             (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
           } catch (err) {}
 
-          if (dragStartRef.current.moved) {
-            // Mode 1: Hold and drag -> release immediately hides text bubble and snaps button!
+          const now = performance.now();
+          const totalDx = e.clientX - dragStartRef.current.x;
+          const totalDy = e.clientY - dragStartRef.current.y;
+          const totalDist = Math.hypot(totalDx, totalDy);
+
+          const swipeDuration = dragStartRef.current.swipeStartTime
+            ? (now - dragStartRef.current.swipeStartTime)
+            : (now - dragStartRef.current.time);
+          const totalDuration = now - dragStartRef.current.time;
+
+          const history = pointerHistoryRef.current;
+          const recentPt = history.find((p) => now - p.time <= 100);
+          const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
+
+          // Quick swipe flick to corner: if total swipe was < 100ms
+          const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
+
+          if (isQuickSwipe) {
+            setActiveBubble(null);
+            const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
+            const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
+            const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
+            const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
+            const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapHanViet);
+            setSnapHanViet(targetCorner);
+          } else if (totalDist > 70) {
+            // Moved outside 70px -> user wants to move the button into new snap position (80px snap range)
             setActiveBubble(null);
             const newSnap = findSnapPositionWithinRange(
               e.clientX,
@@ -1123,22 +1266,24 @@ export default function App() {
               winSize.w,
               winSize.h,
               'hanviet',
-              snapKana
+              snapKana,
+              SNAP_RANGE
             );
             if (newSnap) {
               setSnapHanViet(newSnap);
             }
+          } else if (dragStartRef.current.moved) {
+            // Dragged within 70px projection range -> hide bubble and spring back to original snap slot
+            setActiveBubble(null);
           } else {
-            // Mode 2: Tap on Han-Viet button -> toggles tap-select mode
-            if (isHanVietMode) {
-              setIsHanVietMode(false);
-              setActiveBubble(null);
-            } else {
-              setIsHanVietMode(true);
-              setActiveBubble(null);
-            }
+            // Tap -> toggle tap-select mode
+            setIsHanVietMode((prev) => !prev);
+            setActiveBubble(null);
           }
+
           setIsDragging(false);
+          setIsProjecting(false);
+          setProjPoint(null);
           setDragOrigin(null);
           setDragBtn(null);
           setDragPos(null);
@@ -1147,6 +1292,8 @@ export default function App() {
           e.preventDefault();
           setActiveBubble(null);
           setIsDragging(false);
+          setIsProjecting(false);
+          setProjPoint(null);
           setDragOrigin(null);
           setDragBtn(null);
           setDragPos(null);
@@ -1158,29 +1305,10 @@ export default function App() {
 
       {/* Floating Han-Viet Bubble pointing directly to target word */}
       {activeBubble && (
-        <div
-          className="hanviet-bubble"
-          style={{
-            position: 'fixed',
-            left: `${Math.max(70, Math.min(winSize.w - 70, activeBubble.rect.left + activeBubble.rect.width / 2))}px`,
-            ...(activeBubble.isFlipped
-              ? {
-                  top: `${activeBubble.rect.bottom + 8}px`,
-                  transform: 'translate(-50%, 0)',
-                }
-              : {
-                  bottom: `${winSize.h - activeBubble.rect.top + 8}px`,
-                  transform: 'translate(-50%, 0)',
-                }),
-          }}
-        >
-          {activeBubble.isFlipped && <div className="bubble-arrow arrow-up" />}
-          <div className="bubble-content">
-            <span className="bubble-hv">{activeBubble.hanViet}</span>
-            <span className="bubble-sub">{activeBubble.kanji}</span>
-          </div>
-          {!activeBubble.isFlipped && <div className="bubble-arrow arrow-down" />}
-        </div>
+        <HanVietBubbleView
+          activeBubble={activeBubble}
+          winSize={winSize}
+        />
       )}
 
       {/* Simple JSON Modal */}
@@ -1270,6 +1398,102 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Floating Han-Viet Bubble that clamps itself strictly inside the screen viewport.
+ * If the bubble would overflow either edge, it translates laterally,
+ * while the indicator arrow shifts to continue pointing directly to the center of the target Kanji.
+ */
+function HanVietBubbleView({
+  activeBubble,
+  winSize,
+}: {
+  activeBubble: {
+    kanji: string;
+    hanViet: string;
+    meaning?: string;
+    rect: DOMRect;
+    element: HTMLElement;
+    isFlipped: boolean;
+  };
+  winSize: { w: number; h: number };
+}) {
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [offset, setOffset] = useState<{ bubbleLeft: number; arrowOffset: number }>({
+    bubbleLeft: activeBubble.rect.left + activeBubble.rect.width / 2,
+    arrowOffset: 0,
+  });
+
+  useLayoutEffect(() => {
+    const el = bubbleRef.current;
+    if (!el) return;
+    const width = el.offsetWidth || 180;
+    const kanjiCenterX = activeBubble.rect.left + activeBubble.rect.width / 2;
+    const margin = 12; // Viewport safety margin
+
+    // The bubble's ideal center is kanjiCenterX
+    const halfWidth = width / 2;
+    let clampedCenterX = kanjiCenterX;
+
+    // Check left & right screen boundaries
+    if (clampedCenterX - halfWidth < margin) {
+      clampedCenterX = margin + halfWidth;
+    } else if (clampedCenterX + halfWidth > winSize.w - margin) {
+      clampedCenterX = winSize.w - margin - halfWidth;
+    }
+
+    // Shift arrow by the difference between the actual kanji center and the clamped bubble center
+    // Clamped so the arrow doesn't slide past the rounded corners of the bubble
+    const maxArrowShift = Math.max(0, halfWidth - 20);
+    const arrowShift = Math.max(-maxArrowShift, Math.min(maxArrowShift, kanjiCenterX - clampedCenterX));
+
+    setOffset({
+      bubbleLeft: clampedCenterX,
+      arrowOffset: arrowShift,
+    });
+  }, [activeBubble, winSize.w]);
+
+  return (
+    <div
+      ref={bubbleRef}
+      className="hanviet-bubble"
+      style={{
+        position: 'fixed',
+        left: `${offset.bubbleLeft}px`,
+        transform: 'translate(-50%, 0)',
+        ...(activeBubble.isFlipped
+          ? {
+              top: `${activeBubble.rect.bottom + 8}px`,
+            }
+          : {
+              bottom: `${winSize.h - activeBubble.rect.top + 8}px`,
+            }),
+      }}
+    >
+      {activeBubble.isFlipped && (
+        <div
+          className="bubble-arrow arrow-up"
+          style={{ transform: `translateX(${offset.arrowOffset}px)` }}
+        />
+      )}
+      <div className="bubble-content">
+        <span className="bubble-hv">{activeBubble.hanViet}</span>
+        <span className="bubble-sub">{activeBubble.kanji}</span>
+        {activeBubble.meaning && (
+          <div className="bubble-meaning">
+            {activeBubble.meaning}
+          </div>
+        )}
+      </div>
+      {!activeBubble.isFlipped && (
+        <div
+          className="bubble-arrow arrow-down"
+          style={{ transform: `translateX(${offset.arrowOffset}px)` }}
+        />
       )}
     </div>
   );
