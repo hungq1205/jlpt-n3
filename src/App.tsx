@@ -1,14 +1,59 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
-import { Volume2, Search, RotateCw, Check, Copy, Download, X } from 'lucide-react';
-import { DATA, Flashcard } from './data/flashcards';
+import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders } from 'lucide-react';
+import { LESSONS, Lesson, Flashcard, FlashcardType } from './data/flashcards';
 import { speakJapanese, speakVietnamese } from './utils/speech';
 import { getHanViet, getKanjiMeaning } from './data/hanVietDict';
 import { getSnapCoords, findNearestSnapPosition, findSnapPositionWithinRange, getSwipeCorner, SnapPosition, Point, SNAP_RANGE } from './utils/snapLayout';
 
+export type FrontFaceOption = 'kanji' | 'kana' | 'hanviet' | 'meaning' | 'audio-jp' | 'audio-vn';
+
 export default function App() {
-  // Navigation & state
-  const [activeTab, setActiveTab] = useState<'flashcard' | 'list' | 'quiz'>('flashcard');
-  const [order, setOrder] = useState<number[]>(() => DATA.map((_, i) => i));
+  // Navigation & View State
+  const [activeView, setActiveView] = useState<'flashcard' | 'list' | 'lessons' | 'settings'>('flashcard');
+  const [selectedLessonId, setSelectedLessonId] = useState<string>('lesson-1');
+
+  // Retrieve current active lesson and its cards
+  const currentLesson: Lesson = useMemo(() => {
+    return LESSONS.find((l) => l.id === selectedLessonId) || LESSONS[0];
+  }, [selectedLessonId]);
+
+  const cards: Flashcard[] = currentLesson.cards;
+
+  // Study Settings (stored in local storage)
+  const [frontFaceOption, setFrontFaceOption] = useState<FrontFaceOption>(() => {
+    return (localStorage.getItem('kanji_front_face') as FrontFaceOption) || 'kanji';
+  });
+  const [audioVolume, setAudioVolume] = useState<number>(() => {
+    const saved = localStorage.getItem('kanji_audio_volume');
+    return saved !== null ? parseFloat(saved) : 1.0;
+  });
+  const [autoReadEnabled, setAutoReadEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('kanji_auto_read');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [autoReadLang, setAutoReadLang] = useState<'jp' | 'vn'>(() => {
+    return (localStorage.getItem('kanji_auto_read_lang') as 'jp' | 'vn') || 'jp';
+  });
+
+  // Save settings when changed
+  useEffect(() => {
+    localStorage.setItem('kanji_front_face', frontFaceOption);
+  }, [frontFaceOption]);
+
+  useEffect(() => {
+    localStorage.setItem('kanji_audio_volume', audioVolume.toString());
+  }, [audioVolume]);
+
+  useEffect(() => {
+    localStorage.setItem('kanji_auto_read', autoReadEnabled.toString());
+  }, [autoReadEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('kanji_auto_read_lang', autoReadLang);
+  }, [autoReadLang]);
+
+  // Card deck order & position
+  const [order, setOrder] = useState<number[]>(() => cards.map((_, i) => i));
   const [pos, setPos] = useState<number>(0);
   const [flipped, setFlipped] = useState<boolean>(false);
   const [mode, setMode] = useState<'jp-vi' | 'vi-jp'>('jp-vi');
@@ -16,7 +61,14 @@ export default function App() {
   const [isFabPressed, setIsFabPressed] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
-  // Draggable FAB snap positions (default to bottom-right corner)
+  // When lesson changes, reset order and position
+  useEffect(() => {
+    setOrder(cards.map((_, i) => i));
+    setPos(0);
+    setFlipped(false);
+  }, [selectedLessonId, cards]);
+
+  // Draggable FAB snap positions
   const [snapKana, setSnapKana] = useState<SnapPosition>('BR');
   const [snapHanViet, setSnapHanViet] = useState<SnapPosition>('BR');
   const [snapRead, setSnapRead] = useState<SnapPosition>('BR');
@@ -39,6 +91,7 @@ export default function App() {
   const [isHanVietMode, setIsHanVietMode] = useState<boolean>(false);
   const [activeBubble, setActiveBubble] = useState<{
     kanji: string;
+    kana?: string;
     hanViet: string;
     meaning?: string;
     rect: DOMRect;
@@ -46,9 +99,6 @@ export default function App() {
     isFlipped: boolean;
   } | null>(null);
 
-  // JSON modal
-  const [showJsonModal, setShowJsonModal] = useState<boolean>(false);
-  const [copied, setCopied] = useState<boolean>(false);
   const suppressClickUntilRef = useRef<number>(0);
 
   // Global event guard: suppress click/pointer events if they originated from dismissing Han-Viet mode
@@ -72,22 +122,16 @@ export default function App() {
     };
   }, []);
 
-  // List view search
+  // List view search & filter
   const [searchQuery, setSearchQuery] = useState<string>('');
-
-  // Quiz state
-  const [quizPos, setQuizPos] = useState<number>(0);
-  const [quizScore, setQuizScore] = useState<number>(0);
-  const [quizSelected, setQuizSelected] = useState<string | null>(null);
-  const [quizAnswered, setQuizAnswered] = useState<boolean>(false);
-  const [quizFinished, setQuizFinished] = useState<boolean>(false);
+  const [listFilter, setListFilter] = useState<'all' | 'kanji' | 'vocab'>('all');
 
   // Swipe gesture tracking
   const touchStartRef = useRef<{ x: number; y: number; moved: boolean }>({ x: 0, y: 0, moved: false });
   const cardWrapRef = useRef<HTMLDivElement>(null);
 
-  // Current card in flashcard mode
-  const currentCard: Flashcard = DATA[order[pos]] || DATA[0];
+  // Current active card
+  const currentCard: Flashcard = cards[order[pos]] || cards[0];
 
   // Actions
   const handleFlip = useCallback(() => {
@@ -104,28 +148,71 @@ export default function App() {
     setPos((prev) => (prev - 1 + order.length) % order.length);
   }, [order.length]);
 
-  const handleToggleMode = useCallback(() => {
-    setMode((prev) => (prev === 'jp-vi' ? 'vi-jp' : 'jp-vi'));
+  const handleShuffle = useCallback(() => {
+    setFlipped(false);
+    setOrder((prev) => [...prev].sort(() => Math.random() - 0.5));
+    setPos(0);
   }, []);
 
-  const handleShuffle = useCallback(() => {
-    const newOrder = [...order];
-    for (let i = newOrder.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]];
-    }
-    setOrder(newOrder);
-    setPos(0);
+  const handleToggleMode = useCallback(() => {
+    setMode((prev) => (prev === 'jp-vi' ? 'vi-jp' : 'jp-vi'));
     setFlipped(false);
-  }, [order]);
+  }, []);
 
-  // Audio helper with stopPropagation
-  const playAudio = (e: React.MouseEvent, text: string) => {
+  // Auto-read on card change
+  const isFirstMountRef = useRef<boolean>(true);
+  useEffect(() => {
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      return;
+    }
+    if (!autoReadEnabled || activeView !== 'flashcard' || !currentCard) return;
+
+    const timer = setTimeout(() => {
+      if (autoReadLang === 'jp') {
+        speakJapanese(currentCard.kanji, 0.9, audioVolume);
+      } else {
+        speakVietnamese(currentCard.viet, 0.95, audioVolume);
+      }
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [pos, selectedLessonId, autoReadEnabled, autoReadLang, activeView, audioVolume, currentCard]);
+
+  // Audio trigger helper with volume
+  const playAudio = useCallback((e: React.MouseEvent | React.TouchEvent, text: string, isVn = false) => {
     e.stopPropagation();
-    speakJapanese(text);
-  };
+    if (isVn) {
+      speakVietnamese(text, 0.95, audioVolume);
+    } else {
+      speakJapanese(text, 0.9, audioVolume);
+    }
+  }, [audioVolume]);
 
-  // Pure hold-to-reveal handlers (starts on press/touch, turns off IMMEDIATELY on release)
+  // Floating read button action:
+  // - If front face: reads based on front face / selected language
+  // - If back face: reads sentence (always Japanese)
+  const handleReadClick = useCallback(() => {
+    if (activeView !== 'flashcard' || !currentCard) return;
+
+    setIsSpeaking(true);
+    setTimeout(() => setIsSpeaking(false), 900);
+
+    if (!flipped) {
+      if (frontFaceOption === 'meaning' || frontFaceOption === 'audio-vn') {
+        speakVietnamese(currentCard.viet, 0.95, audioVolume);
+      } else if (frontFaceOption === 'kana') {
+        speakJapanese(currentCard.kana.split('/')[0].trim() || currentCard.kanji, 0.9, audioVolume);
+      } else {
+        // default kanji or audio-jp
+        speakJapanese(currentCard.kanji, 0.9, audioVolume);
+      }
+    } else {
+      speakJapanese(currentCard.example, 0.9, audioVolume);
+    }
+  }, [activeView, currentCard, flipped, frontFaceOption, audioVolume]);
+
+  // Furigana hold reveal
   const startReveal = useCallback(() => {
     setShowKana(true);
     setIsFabPressed(true);
@@ -136,11 +223,10 @@ export default function App() {
     setIsFabPressed(false);
   }, []);
 
-  // Global window listeners: the EXACT moment touch or mouse is released anywhere, turn off kana
+  // Global pointer release guard for Kana reveal
   useEffect(() => {
     const handleGlobalRelease = () => {
-      setShowKana(false);
-      setIsFabPressed(false);
+      stopReveal();
     };
 
     window.addEventListener('pointerup', handleGlobalRelease);
@@ -156,28 +242,28 @@ export default function App() {
       window.removeEventListener('touchcancel', handleGlobalRelease);
       window.removeEventListener('blur', handleGlobalRelease);
     };
-  }, []);
+  }, [stopReveal]);
 
-  // Keyboard navigation on PC (hold K to reveal, release K to hide)
+  // Keyboard navigation on PC
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showJsonModal || e.target instanceof HTMLInputElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
 
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        if (activeTab === 'flashcard') handleFlip();
+        if (activeView === 'flashcard') handleFlip();
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        if (activeTab === 'flashcard') handleNext();
+        if (activeView === 'flashcard') handleNext();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        if (activeTab === 'flashcard') handlePrev();
+        if (activeView === 'flashcard') handlePrev();
       } else if (e.key.toLowerCase() === 'm') {
         handleToggleMode();
       } else if (e.key.toLowerCase() === 'k' && !e.repeat) {
         startReveal();
       } else if (e.key.toLowerCase() === 'a') {
-        if (activeTab === 'flashcard' && currentCard) speakJapanese(currentCard.kanji);
+        if (activeView === 'flashcard' && currentCard) speakJapanese(currentCard.kanji, 0.9, audioVolume);
       }
     };
 
@@ -193,24 +279,52 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [showJsonModal, activeTab, handleFlip, handleNext, handlePrev, handleToggleMode, currentCard, startReveal, stopReveal]);
+  }, [activeView, handleFlip, handleNext, handlePrev, handleToggleMode, currentCard, startReveal, stopReveal, audioVolume]);
 
-  // Track window resizing for snap calculations
+  // Window resize tracking
   useEffect(() => {
     const handleResize = () => setWinSize({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Helper to find nearest kanji word on screen (excluding hidden faces of the flashcard)
-  const findNearestKanji = useCallback((x: number, y: number, maxDist = 30) => {
+  // Helper to find nearest kanji word on screen
+  const findNearestKanji = useCallback((x: number, y: number, maxDist = 70) => {
+    // 1. Direct hit check via elementFromPoint
+    const hitEl = document.elementFromPoint(x, y);
+    if (hitEl) {
+      const directTarget = hitEl.closest<HTMLElement>('[data-kanji-target="true"]');
+      if (directTarget) {
+        const face = directTarget.closest('.face');
+        const isVisible = !face || (face.classList.contains('back') ? flipped : !flipped);
+        if (isVisible) {
+          const rect = directTarget.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            const kanji = directTarget.getAttribute('data-kanji') || directTarget.innerText || '';
+            const kana = directTarget.getAttribute('data-kana') || '';
+            const hanViet = directTarget.getAttribute('data-hanviet') || getHanViet(kanji);
+            const meaning = directTarget.getAttribute('data-meaning') || getKanjiMeaning(kanji);
+            return {
+              element: directTarget,
+              kanji,
+              kana,
+              hanViet,
+              meaning,
+              rect,
+              isFlipped: rect.top < 95,
+            };
+          }
+        }
+      }
+    }
+
+    // 2. Proximity search among all kanji targets
     const elements = document.querySelectorAll<HTMLElement>('[data-kanji-target="true"]');
     let closestEl: HTMLElement | null = null;
     let closestDist = Infinity;
     let closestRect: DOMRect | null = null;
 
     elements.forEach((el) => {
-      // The hidden face in the flashcard should not be detectable with Han-Viet reveal
       const face = el.closest('.face');
       if (face) {
         if (face.classList.contains('back') && !flipped) return;
@@ -219,7 +333,6 @@ export default function App() {
 
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
-      // Distance from point (x, y) to the actual boundary of the kanji element
       const dx = Math.max(rect.left - x, 0, x - rect.right);
       const dy = Math.max(rect.top - y, 0, y - rect.bottom);
       const d = Math.hypot(dx, dy);
@@ -234,15 +347,17 @@ export default function App() {
       const el = closestEl as HTMLElement;
       const targetRect = closestRect as DOMRect;
       const kanji = el.getAttribute('data-kanji') || el.innerText || '';
+      const kana = el.getAttribute('data-kana') || '';
       const hanViet = el.getAttribute('data-hanviet') || getHanViet(kanji);
       const meaning = el.getAttribute('data-meaning') || getKanjiMeaning(kanji);
       return {
         element: el,
         kanji,
+        kana,
         hanViet,
         meaning,
         rect: targetRect,
-        isFlipped: targetRect.top < 85,
+        isFlipped: targetRect.top < 95,
       };
     }
     return null;
@@ -259,45 +374,45 @@ export default function App() {
     }
   }, [activeBubble]);
 
-  // Intercept taps when tap-selecting kanji word for Han-Viet without triggering other clicks
+  // Intercept taps when tap-selecting kanji word for Han-Viet
   useEffect(() => {
     if (!isHanVietMode) return;
 
-    const handleCapturePointerDown = (e: MouseEvent | TouchEvent) => {
+    const handlePointerDown = (e: MouseEvent | TouchEvent | PointerEvent) => {
       const target = e.target as HTMLElement | null;
-      // Let interactions on the Han-Viet FAB, Kana FAB, or Read FAB pass through
-      if (target && (target.closest('.fab-hanviet') || target.closest('.fab-kana') || target.closest('.fab-read'))) {
+      if (target && (target.closest('.fab') || target.closest('.topbar') || target.closest('.controls-dock') || target.closest('.controls'))) {
         return;
       }
 
-      // Prevent triggering other elements (card flip, speech audio, buttons, etc.)
       e.preventDefault();
       e.stopPropagation();
-      e.stopImmediatePropagation();
 
-      const clientX = 'touches' in e ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
-      const clientY = 'touches' in e ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+      let clientX = 0;
+      let clientY = 0;
+      if ('touches' in e && (e as TouchEvent).touches.length > 0) {
+        clientX = (e as TouchEvent).touches[0].clientX;
+        clientY = (e as TouchEvent).touches[0].clientY;
+      } else if ('changedTouches' in e && (e as TouchEvent).changedTouches.length > 0) {
+        clientX = (e as TouchEvent).changedTouches[0].clientX;
+        clientY = (e as TouchEvent).changedTouches[0].clientY;
+      } else if ('clientX' in e) {
+        clientX = (e as MouseEvent).clientX;
+        clientY = (e as MouseEvent).clientY;
+      }
 
-      // Find snappable kanji within 30px proximity only
-      const found = findNearestKanji(clientX, clientY, 30);
+      const found = findNearestKanji(clientX, clientY, 70);
       if (found) {
         setActiveBubble(found);
       } else {
-        // When tap onto nowhere (no snappable Han-Viet), turn off Han-Viet mode
-        // and suppress any click/pointer event from triggering other elements
-        suppressClickUntilRef.current = Date.now() + 450;
+        suppressClickUntilRef.current = Date.now() + 350;
         setIsHanVietMode(false);
         setActiveBubble(null);
       }
     };
 
-    window.addEventListener('click', handleCapturePointerDown, true);
-    window.addEventListener('pointerdown', handleCapturePointerDown, true);
-    window.addEventListener('pointerup', handleCapturePointerDown, true);
+    window.addEventListener('pointerdown', handlePointerDown, true);
     return () => {
-      window.removeEventListener('click', handleCapturePointerDown, true);
-      window.removeEventListener('pointerdown', handleCapturePointerDown, true);
-      window.removeEventListener('pointerup', handleCapturePointerDown, true);
+      window.removeEventListener('pointerdown', handlePointerDown, true);
     };
   }, [isHanVietMode, findNearestKanji]);
 
@@ -306,13 +421,13 @@ export default function App() {
     return getSnapCoords(
       snapKana,
       snapHanViet,
-      activeTab === 'flashcard' ? snapRead : undefined,
+      activeView === 'flashcard' ? snapRead : undefined,
       winSize.w,
       winSize.h
     );
-  }, [snapKana, snapHanViet, snapRead, activeTab, winSize.w, winSize.h]);
+  }, [snapKana, snapHanViet, snapRead, activeView, winSize.w, winSize.h]);
 
-  // Compute predicted release snap destination while dragging (only if within small range)
+  // Compute predicted release snap destination while dragging
   const targetSnapCoords = useMemo(() => {
     if (!isDragging || !dragBtn || !dragPos) return null;
     const currentCenterX = dragPos.x + 25;
@@ -326,41 +441,21 @@ export default function App() {
       {
         kana: snapKana,
         hanViet: snapHanViet,
-        read: activeTab === 'flashcard' ? snapRead : undefined,
+        read: activeView === 'flashcard' ? snapRead : undefined,
       }
     );
     if (!matchedSnap) return null;
     const coords = getSnapCoords(
       dragBtn === 'kana' ? matchedSnap : snapKana,
       dragBtn === 'hanviet' ? matchedSnap : snapHanViet,
-      activeTab === 'flashcard' ? (dragBtn === 'read' ? matchedSnap : snapRead) : undefined,
+      activeView === 'flashcard' ? (dragBtn === 'read' ? matchedSnap : snapRead) : undefined,
       winSize.w,
       winSize.h
     );
     const targetPt = dragBtn === 'kana' ? coords.kana : dragBtn === 'hanviet' ? coords.hanViet : coords.read;
     if (!targetPt) return null;
     return { x: targetPt.x + 25, y: targetPt.y + 25 };
-  }, [isDragging, dragBtn, dragPos, snapKana, snapHanViet, snapRead, activeTab, winSize.w, winSize.h]);
-
-  // Floating read button action:
-  // - If click on front face: read word (japanese if jp->vi, vietnamese if vi->jp)
-  // - If click on back face: read sentence (always japanese)
-  const handleReadClick = useCallback(() => {
-    if (activeTab !== 'flashcard' || !currentCard) return;
-
-    setIsSpeaking(true);
-    setTimeout(() => setIsSpeaking(false), 900);
-
-    if (!flipped) {
-      if (mode === 'jp-vi') {
-        speakJapanese(currentCard.kanji);
-      } else {
-        speakVietnamese(currentCard.viet);
-      }
-    } else {
-      speakJapanese(currentCard.example);
-    }
-  }, [activeTab, currentCard, flipped, mode]);
+  }, [isDragging, dragBtn, dragPos, snapKana, snapHanViet, snapRead, activeView, winSize.w, winSize.h]);
 
   // Sync kana class with body
   useEffect(() => {
@@ -383,15 +478,18 @@ export default function App() {
   const handleTouchMove = (e: React.TouchEvent) => {
     const dx = e.touches[0].clientX - touchStartRef.current.x;
     const dy = e.touches[0].clientY - touchStartRef.current.y;
-    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
       touchStartRef.current.moved = true;
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartRef.current.moved) return;
     const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
-    if (Math.abs(dx) > 55) {
+    const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    if (absDx > 48 && absDx > absDy) {
       if (dx < 0) {
         handleNext();
       } else {
@@ -400,211 +498,283 @@ export default function App() {
     }
   };
 
-  // Render Japanese word with kana overlay and kanji target data
-  const renderJapaneseWord = (w: Flashcard, showAudio = true) => {
-    const hasKanji = w.kanji && w.kanji !== w.kana;
-    return (
-      <span className="inline-flex items-center gap-2">
-        <span
-          className="jp-word-container"
-          data-kanji-target="true"
-          data-kanji={w.kanji}
-          data-hanviet={w.hanViet}
-          data-meaning={w.viet}
-          style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
-        >
-          {hasKanji && <span className="kana-overlay">{w.kana}</span>}
-          <span className="kanji-text">{w.kanji}</span>
-        </span>
-        {showAudio && (
-          <button
-            type="button"
-            className="audio-btn"
-            onClick={(e) => playAudio(e, w.kanji)}
-            title="Phát âm"
-          >
-            <Volume2 className="w-5 h-5 text-blue-500 hover:text-blue-700" />
-          </button>
-        )}
-      </span>
-    );
-  };
+  // Helper to render plain segment so any individual Kanji is interactive for Han-Viet
+  const renderPlainSegment = (text: string, keyPrefix: string, elements: React.ReactNode[]) => {
+    // Kanji Unicode range: \u4e00-\u9faf
+    const kanjiRegex = /([\u4e00-\u9faf]+)/g;
+    let lastIdx = 0;
+    let m: RegExpExecArray | null;
 
-  // Render example sentence with furigana precisely placed on top of its respective kanji
-  const renderRubySentence = (rubyText?: string, plainText?: string) => {
-    if (!rubyText) return plainText || '';
-    // Matches only the Kanji characters directly preceding the [furigana]
-    const regex = /([\u4e00-\u9faf\u3005]+)\[([^\]]+)\]/g;
-    const nodes: React.ReactNode[] = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    let idx = 0;
-
-    while ((match = regex.exec(rubyText)) !== null) {
-      // 1. Plain text before this kanji match (Hiragana particles, Katakana, punctuation, numbers)
-      if (match.index > lastIndex) {
-        nodes.push(<span key={`txt-${idx++}`}>{rubyText.slice(lastIndex, match.index)}</span>);
+    while ((m = kanjiRegex.exec(text)) !== null) {
+      if (m.index > lastIdx) {
+        elements.push(
+          <span key={`${keyPrefix}-txt-${lastIdx}`}>
+            {text.substring(lastIdx, m.index)}
+          </span>
+        );
       }
-
-      // 2. The Kanji base and its exact Furigana
-      const kanji = match[1];
-      const furigana = match[2];
-
-      nodes.push(
-        <ruby
-          key={`rb-${idx++}`}
+      const kanji = m[1];
+      elements.push(
+        <span
+          key={`${keyPrefix}-kj-${m.index}`}
+          className="jp-word-container"
           data-kanji-target="true"
           data-kanji={kanji}
           data-hanviet={getHanViet(kanji)}
           data-meaning={getKanjiMeaning(kanji)}
           style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
         >
-          {kanji}
-          <rt className="ruby-text">{furigana}</rt>
+          <span className="kanji-text">{kanji}</span>
+        </span>
+      );
+      lastIdx = kanjiRegex.lastIndex;
+    }
+
+    if (lastIdx < text.length) {
+      elements.push(
+        <span key={`${keyPrefix}-txt-end`}>
+          {text.substring(lastIdx)}
+        </span>
+      );
+    }
+  };
+
+  // Helper to render ruby text for Japanese sentences using native ruby elements on exact same text baseline
+  const renderRubySentence = (rubyStr?: string, plainStr?: string) => {
+    const textToRender = rubyStr || plainStr || '';
+    if (!textToRender) return null;
+
+    // Pattern to match Kanji followed by [reading]
+    const rubyRegex = /([\u4e00-\u9faf\u3400-\u4dbf々〆ヵヶ]+)\[(.*?)\]/g;
+    const elements: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = rubyRegex.exec(textToRender)) !== null) {
+      if (match.index > lastIndex) {
+        const plainPart = textToRender.substring(lastIndex, match.index);
+        renderPlainSegment(plainPart, `plain-${lastIndex}`, elements);
+      }
+
+      const kanjiText = match[1];
+      const rubyText = match[2];
+      const matchIndex = match.index;
+
+      elements.push(
+        <ruby
+          key={`ruby-${matchIndex}`}
+          className="jp-word-container"
+          data-kanji-target="true"
+          data-kanji={kanjiText}
+          data-hanviet={getHanViet(kanjiText)}
+          data-meaning={getKanjiMeaning(kanjiText)}
+          style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
+        >
+          <span className="kanji-text">{kanjiText}</span>
+          <rt className="ruby-text">{rubyText}</rt>
         </ruby>
       );
 
-      lastIndex = regex.lastIndex;
+      lastIndex = rubyRegex.lastIndex;
     }
 
-    // 3. Any trailing text
-    if (lastIndex < rubyText.length) {
-      nodes.push(<span key={`txt-${idx++}`}>{rubyText.slice(lastIndex)}</span>);
+    if (lastIndex < textToRender.length) {
+      const remaining = textToRender.substring(lastIndex);
+      renderPlainSegment(remaining, `plain-end`, elements);
     }
 
-    return nodes;
+    return elements;
   };
 
-  // List view filtered items
+  // Helper to render Japanese word with kana overlay
+  const renderJapaneseWord = (card: Flashcard, large = true) => {
+    const hasKana = card.kanji !== card.kana;
+    const kanaText = card.type === 'kanji' ? card.onyomi || card.kana : card.kana;
+
+    return (
+      <ruby
+        className="jp-word-container"
+        data-kanji-target="true"
+        data-kanji={card.kanji}
+        data-kana={kanaText}
+        data-hanviet={card.hanViet}
+        data-meaning={card.viet}
+        style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
+      >
+        <span className="kanji-text" style={{ fontSize: large ? 'clamp(38px, 11vw, 68px)' : 'inherit' }}>
+          {card.kanji}
+        </span>
+        {hasKana && (
+          <rt
+            className="ruby-text kana-overlay"
+            style={{ fontSize: large ? '0.42em' : '0.52em' }}
+          >
+            {kanaText}
+          </rt>
+        )}
+      </ruby>
+    );
+  };
+
+  // Render Front Face content based on user settings
+  const renderFrontFaceContent = () => {
+    switch (frontFaceOption) {
+      case 'kana':
+        if (currentCard.type === 'kanji') {
+          return (
+            <div className="front-kana-kanji">
+              {currentCard.onyomi && (
+                <div className="reading-line">
+                  <span className="reading-badge on">On</span>
+                  <span>{currentCard.onyomi}</span>
+                </div>
+              )}
+              {currentCard.kunyomi && (
+                <div className="reading-line">
+                  <span className="reading-badge kun">Kun</span>
+                  <span>{currentCard.kunyomi}</span>
+                </div>
+              )}
+            </div>
+          );
+        }
+        return <span style={{ fontSize: 'clamp(32px, 8vw, 48px)', fontWeight: '700' }}>{currentCard.kana}</span>;
+
+      case 'hanviet':
+        return (
+          <div style={{ textAlign: 'center' }}>
+            <span style={{ fontSize: 'clamp(32px, 8.5vw, 54px)', fontWeight: '800', color: '#7c3aed', letterSpacing: '1px' }}>
+              {currentCard.hanViet}
+            </span>
+          </div>
+        );
+
+      case 'meaning':
+        return (
+          <div style={{ textAlign: 'center', padding: '0 10px' }}>
+            <span style={{ fontSize: 'clamp(24px, 6vw, 36px)', fontWeight: '700', color: '#1f2937', lineHeight: 1.35 }}>
+              {currentCard.viet}
+            </span>
+          </div>
+        );
+
+      case 'audio-jp':
+        return (
+          <div className="audio-prompt-container">
+            <Volume2 className="w-14 h-14 text-blue-500 animate-pulse" />
+            <div className="audio-prompt-text">Listen to Japanese</div>
+            <button
+              type="button"
+              className="audio-replay-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                speakJapanese(currentCard.kanji, 0.9, audioVolume);
+              }}
+            >
+              Replay
+            </button>
+          </div>
+        );
+
+      case 'audio-vn':
+        return (
+          <div className="audio-prompt-container">
+            <Volume2 className="w-14 h-14 text-emerald-500 animate-pulse" />
+            <div className="audio-prompt-text">Listen to Vietnamese</div>
+            <button
+              type="button"
+              className="audio-replay-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                speakVietnamese(currentCard.viet, 0.95, audioVolume);
+              }}
+            >
+              Replay
+            </button>
+          </div>
+        );
+
+      case 'kanji':
+      default:
+        return mode === 'jp-vi' ? renderJapaneseWord(currentCard, true) : <span>{currentCard.viet}</span>;
+    }
+  };
+
+  // Filtered list for current lesson
   const filteredList = useMemo(() => {
-    if (!searchQuery.trim()) return DATA;
-    const q = searchQuery.toLowerCase().trim();
-    return DATA.filter(
-      (w) =>
+    return cards.filter((w) => {
+      if (listFilter === 'kanji' && w.type !== 'kanji') return false;
+      if (listFilter === 'vocab' && w.type === 'kanji') return false;
+
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return true;
+      return (
         w.kanji.toLowerCase().includes(q) ||
         w.kana.toLowerCase().includes(q) ||
         w.viet.toLowerCase().includes(q) ||
-        w.hanViet.toLowerCase().includes(q) ||
-        w.example.toLowerCase().includes(q) ||
-        (w.exampleKana && w.exampleKana.toLowerCase().includes(q)) ||
-        w.exampleViet.toLowerCase().includes(q)
-    );
-  }, [searchQuery]);
-
-  // Quiz current question options
-  const quizCard = DATA[quizPos];
-  const quizOptions = useMemo(() => {
-    if (!quizCard) return [];
-    const correct = mode === 'jp-vi' ? quizCard.viet : quizCard.kanji;
-    const others = DATA.filter((d) => d.id !== quizCard.id)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3)
-      .map((d) => (mode === 'jp-vi' ? d.viet : d.kanji));
-
-    return [correct, ...others].sort(() => Math.random() - 0.5);
-  }, [quizPos, quizCard, mode]);
-
-  const handleQuizSelect = (opt: string) => {
-    if (quizAnswered) return;
-    setQuizSelected(opt);
-    setQuizAnswered(true);
-    const correct = mode === 'jp-vi' ? quizCard.viet : quizCard.kanji;
-    if (opt === correct) {
-      setQuizScore((prev) => prev + 1);
-    }
-  };
-
-  const handleQuizNext = () => {
-    if (quizPos + 1 < DATA.length) {
-      setQuizPos((prev) => prev + 1);
-      setQuizSelected(null);
-      setQuizAnswered(false);
-    } else {
-      setQuizFinished(true);
-    }
-  };
-
-  const handleQuizRestart = () => {
-    setQuizPos(0);
-    setQuizScore(0);
-    setQuizSelected(null);
-    setQuizAnswered(false);
-    setQuizFinished(false);
-  };
-
-  // Copy JSON handler
-  const handleCopyJson = async () => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(DATA, null, 2));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Download JSON handler
-  const handleDownloadJson = () => {
-    const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'flashcards.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+        w.hanViet.toLowerCase().includes(q)
+      );
+    });
+  }, [cards, searchQuery, listFilter]);
 
   return (
-    <div className="app">
-      {/* Top Bar */}
-      <header className="topbar">
-        <div className="chip-group">
-          {/* Mode switch */}
-          <button className="chip" id="modeBtn" onClick={handleToggleMode}>
-            {mode === 'jp-vi' ? 'JP → VI' : 'VI → JP'}
-          </button>
-
-          {/* Simple Tab Pills */}
+    <div className={`app ${showKana ? 'show-kana' : ''}`}>
+      {/* Top Header Bar */}
+      <header className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Quick Active Lesson Chip: Book icon + number (click toggles lesson view) */}
           <button
-            className={`chip ${activeTab === 'flashcard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('flashcard')}
+            type="button"
+            className={`lesson-chip-btn ${activeView === 'lessons' ? 'active' : ''}`}
+            onClick={() => setActiveView((prev) => (prev === 'lessons' ? 'flashcard' : 'lessons'))}
+            title={`Lesson ${selectedLessonId.replace('lesson-', '')}`}
           >
-            Thẻ
-          </button>
-          <button
-            className={`chip ${activeTab === 'list' ? 'active' : ''}`}
-            onClick={() => setActiveTab('list')}
-          >
-            Danh sách
-          </button>
-          <button
-            className={`chip ${activeTab === 'quiz' ? 'active' : ''}`}
-            onClick={() => setActiveTab('quiz')}
-          >
-            Quiz
-          </button>
-          <button
-            className="chip"
-            onClick={() => setShowJsonModal(true)}
-            title="Xem và tải file JSON"
-          >
-            {'{ }'} JSON
+            <BookOpen className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+            <span>{selectedLessonId.replace('lesson-', '')}</span>
           </button>
         </div>
 
-        {/* Counter */}
-        <div className="counter" id="counter">
-          {activeTab === 'flashcard' && `${pos + 1} / ${order.length}`}
-          {activeTab === 'list' && `${filteredList.length} từ`}
-          {activeTab === 'quiz' && !quizFinished && `${quizPos + 1} / ${DATA.length}`}
+        {/* Center: Icon-only Tabs (Cards / List) */}
+        <div className="chip-group" style={{ margin: '0 auto' }}>
+          <button
+            className={`chip ${activeView === 'flashcard' ? 'active' : ''}`}
+            onClick={() => setActiveView('flashcard')}
+            title="Cards"
+            style={{ padding: '0 12px', height: '34px' }}
+          >
+            <Layers className="w-4 h-4" />
+          </button>
+          <button
+            className={`chip ${activeView === 'list' ? 'active' : ''}`}
+            onClick={() => setActiveView('list')}
+            title="List"
+            style={{ padding: '0 12px', height: '34px' }}
+          >
+            <List className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Right side: Counter & Settings Button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="counter" id="counter">
+            {activeView === 'list' ? `${filteredList.length}` : `${pos + 1} / ${order.length}`}
+          </div>
+
+          {/* Settings button (click toggles settings view) */}
+          <button
+            type="button"
+            className={`topbar-icon-btn ${activeView === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveView((prev) => (prev === 'settings' ? 'flashcard' : 'settings'))}
+            title="Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
-      {/* Main Flashcard View */}
-      {activeTab === 'flashcard' && (
-        <>
+      {/* VIEW 1: Main Flashcard Study */}
+      {activeView === 'flashcard' && (
+        <div className="card-wrap-container">
           <main
             className="card-wrap"
             id="cardWrap"
@@ -622,220 +792,396 @@ export default function App() {
               <section className="face front" id="front">
                 <div className="label">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>{mode === 'jp-vi' ? '日本語' : 'Tiếng Việt'}</span>
+                    <span style={{ fontWeight: '700', color: currentCard.type === 'kanji' ? '#b45309' : '#2563eb' }}>
+                      {currentCard.type === 'kanji' ? 'Kanji' : 'Vocab'}
+                    </span>
                     {currentCard.partOfSpeech && (
                       <span className="pos-subtle">({currentCard.partOfSpeech.toLowerCase()})</span>
                     )}
                   </div>
-                  {mode === 'jp-vi' && (
-                    <button
-                      type="button"
-                      className="audio-btn"
-                      onClick={(e) => playAudio(e, currentCard.kanji)}
-                      title="Phát âm"
-                    >
-                      <Volume2 className="w-4 h-4 text-blue-500" />
-                    </button>
-                  )}
-                </div>
 
-                <div className="big jp">
-                  {mode === 'jp-vi' ? (
-                    renderJapaneseWord(currentCard, false)
-                  ) : (
-                    <span>{currentCard.viet}</span>
-                  )}
-                </div>
-
-                <div className="hint">
-                  {mode === 'jp-vi' ? 'Nhấn để xem nghĩa' : 'Nhấn để xem tiếng Nhật'}
-                </div>
-              </section>
-
-              {/* Back Face */}
-              <section className="face back" id="back">
-                <div className="label">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>Đáp án</span>
-                    {currentCard.partOfSpeech && (
-                      <span className="pos-subtle">({currentCard.partOfSpeech.toLowerCase()})</span>
-                    )}
-                  </div>
                   <button
                     type="button"
                     className="audio-btn"
                     onClick={(e) => playAudio(e, currentCard.kanji)}
-                    title="Phát âm từ"
+                    title="Play audio"
                   >
                     <Volume2 className="w-4 h-4 text-blue-500" />
                   </button>
                 </div>
 
-                {mode === 'vi-jp' ? (
+                <div className="big jp">
+                  {renderFrontFaceContent()}
+                </div>
+
+                <div className="hint">
+                  Tap to flip
+                </div>
+              </section>
+
+              {/* Back Face (Reveals all other information) */}
+              <section className="face back" id="back">
+                <div className="label">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>{currentCard.type === 'kanji' ? 'Kanji' : 'Answer'}</span>
+                    {currentCard.partOfSpeech && (
+                      <span className="pos-subtle">({currentCard.partOfSpeech.toLowerCase()})</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      type="button"
+                      className="audio-btn"
+                      onClick={(e) => playAudio(e, currentCard.kanji)}
+                      title="Play audio"
+                    >
+                      <Volume2 className="w-4 h-4 text-blue-500" />
+                    </button>
+                    <span className="hv" style={{ margin: 0, padding: '3px 8px', fontSize: '11px' }}>
+                      {currentCard.hanViet}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Specific Layout for KANJI Card */}
+                {currentCard.type === 'kanji' ? (
                   <>
-                    <div className="ans-jp">{renderJapaneseWord(currentCard, false)}</div>
-                    <div className="ans-vi">{currentCard.viet}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '4px 0' }}>
+                      <ruby
+                        className="jp-word-container"
+                        data-kanji-target="true"
+                        data-kanji={currentCard.kanji}
+                        data-kana={currentCard.onyomi || currentCard.kana}
+                        data-hanviet={currentCard.hanViet}
+                        data-meaning={currentCard.viet}
+                        style={{ fontSize: '48px', fontWeight: '800', color: '#111827' }}
+                      >
+                        <span className="kanji-text">{currentCard.kanji}</span>
+                        <rt className="ruby-text" style={{ fontSize: '0.36em' }}>
+                          {currentCard.onyomi || currentCard.kana}
+                        </rt>
+                      </ruby>
+                    </div>
+
+                    {/* Onyomi & Kunyomi box */}
+                    <div className="kanji-readings-box">
+                      <div className="reading-item">
+                        <span className="reading-tag on">Onyomi</span>
+                        <span className="reading-val">{currentCard.onyomi || '—'}</span>
+                      </div>
+                      <div className="reading-item">
+                        <span className="reading-tag kun">Kunyomi</span>
+                        <span className="reading-val">{currentCard.kunyomi || '—'}</span>
+                      </div>
+                    </div>
+
+                    <div className="kanji-meaning-box">
+                      <span className="meaning-tag">Meaning:</span>
+                      <strong>{currentCard.viet}</strong>
+                    </div>
+
+                    {/* Related vocabulary list (with kana review on top and Hán-Việt tap review) */}
+                    {currentCard.vocabList && currentCard.vocabList.length > 0 && (
+                      <div className="kanji-vocab-section">
+                        <div className="section-title">Related Vocab ({currentCard.vocabList.length})</div>
+                        {currentCard.vocabList.map((item, idx) => (
+                          <div key={idx} className="kanji-vocab-row">
+                            <div className="vocab-top-row">
+                              <div className="vocab-jp-wrap">
+                                <ruby
+                                  className="vocab-kanji jp-word-container"
+                                  data-kanji-target="true"
+                                  data-kanji={item.kanji}
+                                  data-kana={item.kana}
+                                  data-hanviet={item.hanViet}
+                                  data-meaning={item.meaning}
+                                  style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
+                                >
+                                  <span className="kanji-text">{item.kanji}</span>
+                                  <rt className="ruby-text">{item.kana}</rt>
+                                </ruby>
+                                <span className="vocab-hv">{item.hanViet}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="mini-audio-btn"
+                                onClick={(e) => playAudio(e, item.kanji)}
+                                title="Play"
+                              >
+                                <Volume2 className="w-3.5 h-3.5 text-blue-500" />
+                              </button>
+                            </div>
+                            <div className="vocab-meaning">{item.meaning}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </>
                 ) : (
+                  /* Layout for VOCAB Card */
                   <>
                     <div className="ans-vi">{currentCard.viet}</div>
                     <div className="ans-jp">{renderJapaneseWord(currentCard, false)}</div>
+                    <div className="hv">Hán-Việt: {currentCard.hanViet}</div>
                   </>
                 )}
 
-                <div className="hv">Hán-Việt: {currentCard.hanViet}</div>
                 <div className="divider"></div>
 
+                {/* Example sentence with Han-Viet tap inspection & audio */}
                 <div className="ex-label">
-                  <span>Ví dụ</span>
+                  <span>Example</span>
                   <button
                     type="button"
                     className="audio-btn"
                     onClick={(e) => playAudio(e, currentCard.example)}
-                    title="Nghe câu ví dụ"
+                    title="Play sentence"
                   >
                     <Volume2 className="w-4 h-4 text-blue-500" />
                   </button>
                 </div>
 
-                {/* Example sentence with furigana on top of kanji on hold */}
-                <div className="ex-jp">
+                <div className="ex-jp" id="exJp">
                   {renderRubySentence(currentCard.exampleRuby, currentCard.example)}
                 </div>
-                <div className="ex-vi">{currentCard.exampleViet}</div>
+                <div className="ex-vi" id="exVi">
+                  {currentCard.exampleViet}
+                </div>
               </section>
             </div>
           </main>
 
-          {/* Controls */}
-          <footer className="controls">
-            <button className="nav" id="prevBtn" onClick={handlePrev} title="Thẻ trước [←]">
-              ←
+          {/* Bottom Flashcard Controls: Floating dock overlaying bottom of the full screen card */}
+          <nav
+            className="controls-dock"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="nav-btn"
+              id="prevBtn"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePrev();
+              }}
+              title="Previous"
+            >
+              <ChevronLeft className="w-5 h-5" />
             </button>
-            <button className="nav primary" id="flipBtn" onClick={handleFlip} title="Lật thẻ [Space]">
-              Lật
+            <button
+              className="nav-btn primary"
+              id="flipBtn"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleFlip();
+              }}
+              title="Flip"
+            >
+              <RefreshCw className="w-4 h-4" />
             </button>
-            <button className="nav" id="nextBtn" onClick={handleNext} title="Thẻ sau [→]">
-              →
+            <button
+              className="nav-btn primary"
+              id="nextBtn"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNext();
+              }}
+              title="Next"
+            >
+              <ChevronRight className="w-5 h-5" />
             </button>
-            <button className="nav small" id="shuffleBtn" onClick={handleShuffle} title="Xáo trộn [⤮]">
-              ⤮
+            <button
+              className="nav-btn"
+              id="shuffleBtn"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleShuffle();
+              }}
+              title="Shuffle"
+            >
+              <RotateCw className="w-4 h-4" />
             </button>
-          </footer>
-        </>
+          </nav>
+        </div>
       )}
 
-      {/* List View */}
-      {activeTab === 'list' && (
-        <main className="simple-view-wrap" style={{ paddingBottom: '90px' }}>
-          {/* Simple search bar */}
-          <div style={{ marginBottom: '14px', position: 'relative' }}>
-            <Search
-              style={{
-                position: 'absolute',
-                left: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: '16px',
-                height: '16px',
-                color: '#9ca3af',
-              }}
-            />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm Kanji, Kana, nghĩa, Hán-Việt..."
-              style={{
-                width: '100%',
-                padding: '9px 12px 9px 36px',
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb',
-                fontSize: '14px',
-                outline: 'none',
-                background: '#f9fafb',
-              }}
-            />
+      {/* VIEW 2: Vocabulary & Kanji List */}
+      {activeView === 'list' && (
+        <main className="simple-view-wrap">
+          {/* Search & Filters */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ position: 'relative' }}>
+              <Search
+                className="w-4 h-4"
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#9ca3af',
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px 9px 36px',
+                  borderRadius: '12px',
+                  border: '1px solid #e5e7eb',
+                  fontSize: '14px',
+                  outline: 'none',
+                  background: '#f9fafb',
+                }}
+              />
+            </div>
+
+            {/* Sub-filter chips: All / Kanji / Vocab */}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className={`chip ${listFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setListFilter('all')}
+              >
+                All ({cards.length})
+              </button>
+              <button
+                type="button"
+                className={`chip ${listFilter === 'kanji' ? 'active' : ''}`}
+                onClick={() => setListFilter('kanji')}
+              >
+                Kanji ({cards.filter((c) => c.type === 'kanji').length})
+              </button>
+              <button
+                type="button"
+                className={`chip ${listFilter === 'vocab' ? 'active' : ''}`}
+                onClick={() => setListFilter('vocab')}
+              >
+                Vocab ({cards.filter((c) => c.type !== 'kanji').length})
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {filteredList.map((w) => {
-              const originalIndex = order.findIndex((i) => i === DATA.findIndex((d) => d.id === w.id));
+            {filteredList.map((w) => (
+              <div
+                key={w.id}
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '16px',
+                  border: '1px solid #f0f1f4',
+                  background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,.03)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: w.type === 'kanji' ? '#b45309' : '#6b7280', background: w.type === 'kanji' ? '#fef3c7' : '#f3f4f6', padding: '2px 6px', borderRadius: '4px' }}>
+                      {w.type === 'kanji' ? 'Kanji' : 'Vocab'}
+                    </span>
+
+                    <ruby
+                      className="jp-word-container"
+                      data-kanji-target="true"
+                      data-kanji={w.kanji}
+                      data-kana={w.type === 'kanji' ? w.onyomi || w.kana : w.kana}
+                      data-hanviet={w.hanViet}
+                      data-meaning={w.viet}
+                      style={{
+                        fontSize: w.type === 'kanji' ? '22px' : '18px',
+                        fontWeight: '700',
+                        color: '#111827',
+                        cursor: isHanVietMode ? 'crosshair' : 'inherit',
+                      }}
+                    >
+                      <span className="kanji-text">{w.kanji}</span>
+                      {w.kanji !== w.kana && (
+                        <rt className="ruby-text kana-overlay">
+                          {w.type === 'kanji' ? w.onyomi || w.kana : w.kana}
+                        </rt>
+                      )}
+                    </ruby>
+
+                    <button
+                      type="button"
+                      className="audio-btn"
+                      onClick={(e) => playAudio(e, w.kanji)}
+                      title="Play"
+                    >
+                      <Volume2 className="w-4 h-4 text-blue-500" />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', marginLeft: '8px' }}>
+                    <span className="hv" style={{ margin: 0, padding: '3px 9px', fontSize: '11px' }}>
+                      {w.hanViet}
+                    </span>
+                    {w.partOfSpeech && (
+                      <span className="pos-subtle" style={{ fontSize: '10.5px' }}>
+                        ({w.partOfSpeech.toLowerCase()})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {w.type === 'kanji' && (
+                  <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#475569', background: '#f8fafc', padding: '6px 10px', borderRadius: '8px', marginBottom: '6px' }}>
+                    <span><strong>On:</strong> {w.onyomi || '—'}</span>
+                    <span><strong>Kun:</strong> {w.kunyomi || '—'}</span>
+                  </div>
+                )}
+
+                <div style={{ fontSize: '14.5px', fontWeight: '600', color: '#1f2937', marginBottom: '6px' }}>
+                  {w.viet}
+                </div>
+
+                <div style={{ fontSize: '13px', color: '#6b7280', background: '#f9fafb', padding: '8px 10px', borderRadius: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div className="ex-jp" style={{ margin: 0, fontSize: '13.5px', lineHeight: 1.85 }}>
+                      {renderRubySentence(w.exampleRuby, w.example)}
+                    </div>
+                    <button
+                      type="button"
+                      className="audio-btn"
+                      onClick={(e) => playAudio(e, w.example)}
+                      title="Play"
+                    >
+                      <Volume2 className="w-3.5 h-3.5 text-blue-500" />
+                    </button>
+                  </div>
+                  <div style={{ marginTop: '2px', color: '#9ca3af', fontSize: '12px' }}>{w.exampleViet}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </main>
+      )}
+
+      {/* VIEW 3: Lesson Selection Screen (no redundant titles or back button, just cards) */}
+      {activeView === 'lessons' && (
+        <main className="lessons-view">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {LESSONS.map((lesson) => {
+              const isSelected = lesson.id === selectedLessonId;
+              const kanjiCount = lesson.cards.filter((c) => c.type === 'kanji').length;
+              const vocabCount = lesson.cards.filter((c) => c.type !== 'kanji').length;
+
               return (
                 <div
-                  key={w.id}
-                  style={{
-                    padding: '14px 16px',
-                    borderRadius: '16px',
-                    border: '1px solid #f0f1f4',
-                    background: '#fff',
-                    boxShadow: '0 1px 3px rgba(0,0,0,.03)',
-                    cursor: 'default',
+                  key={lesson.id}
+                  className={`lesson-card ${isSelected ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedLessonId(lesson.id);
+                    setActiveView('flashcard');
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '12px', fontWeight: '700', color: '#9ca3af' }}>
-                        #{w.id}
-                      </span>
-                      {/* Japanese Word with Furigana / Kana reveal on hold */}
-                      <span
-                        className="jp-word-container"
-                        data-kanji-target="true"
-                        data-kanji={w.kanji}
-                        data-hanviet={w.hanViet}
-                        style={{
-                          fontSize: '18px',
-                          fontWeight: '700',
-                          color: '#111827',
-                          cursor: isHanVietMode ? 'crosshair' : 'inherit',
-                        }}
-                      >
-                        {w.kanji !== w.kana && <span className="kana-overlay">{w.kana}</span>}
-                        <span className="kanji-text">{w.kanji}</span>
-                      </span>
-                      <button
-                        type="button"
-                        className="audio-btn"
-                        onClick={(e) => playAudio(e, w.kanji)}
-                        title="Phát âm"
-                      >
-                        <Volume2 className="w-4 h-4 text-blue-500" />
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', marginLeft: '8px' }}>
-                      <span className="hv" style={{ margin: 0, padding: '3px 9px', fontSize: '11px' }}>
-                        {w.hanViet}
-                      </span>
-                      {w.partOfSpeech && (
-                        <span className="pos-subtle" style={{ fontSize: '10.5px' }}>
-                          ({w.partOfSpeech.toLowerCase()})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: '15px', fontWeight: '600', color: '#1f2937', marginBottom: '6px' }}>
-                    {w.viet}
-                  </div>
-
-                  <div style={{ fontSize: '13px', color: '#6b7280', background: '#f9fafb', padding: '8px 10px', borderRadius: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      {/* Example sentence reveals kana on top of kanji on hold */}
-                      <div className="ex-jp" style={{ margin: 0, fontSize: '13.5px', lineHeight: 1.85 }}>
-                        {renderRubySentence(w.exampleRuby, w.example)}
-                      </div>
-                      <button
-                        type="button"
-                        className="audio-btn"
-                        onClick={(e) => playAudio(e, w.example)}
-                        title="Nghe câu"
-                      >
-                        <Volume2 className="w-3.5 h-3.5 text-blue-500" />
-                      </button>
-                    </div>
-                    <div style={{ marginTop: '2px', color: '#9ca3af', fontSize: '12px' }}>{w.exampleViet}</div>
+                  <div className="lesson-title">{lesson.title}</div>
+                  <p className="lesson-desc">{lesson.description}</p>
+                  <div className="lesson-stats">
+                    <span className="lesson-stat-pill">
+                      {kanjiCount} Kanji • {vocabCount} Vocab
+                    </span>
                   </div>
                 </div>
               );
@@ -844,158 +1190,95 @@ export default function App() {
         </main>
       )}
 
-      {/* Quiz View */}
-      {activeTab === 'quiz' && (
-        <main className="simple-view-wrap" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingBottom: '90px' }}>
-          {!quizFinished ? (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <span className="label" style={{ margin: 0 }}>
-                    Câu {quizPos + 1} / {DATA.length}
-                  </span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#3b82f6' }}>
-                    Đúng: {quizScore}
-                  </span>
-                </div>
-
-                <div style={{ textAlign: 'center', padding: '16px 0 24px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: '#9ca3af', letterSpacing: '1px', marginBottom: '8px' }}>
-                    {mode === 'jp-vi' ? 'Nghĩa tiếng Việt của từ là gì?' : 'Từ tiếng Nhật tương ứng là gì?'}
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    {mode === 'jp-vi' ? (
-                      <span style={{ fontSize: 'clamp(28px, 7vw, 42px)', fontWeight: '700', color: '#111827' }}>
-                        {renderJapaneseWord(quizCard, false)}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 'clamp(24px, 6vw, 36px)', fontWeight: '700', color: '#111827' }}>
-                        {quizCard.viet}
-                      </span>
-                    )}
-
-                    {mode === 'jp-vi' && (
-                      <button
-                        type="button"
-                        className="audio-btn"
-                        onClick={(e) => playAudio(e, quizCard.kanji)}
-                        title="Phát âm"
-                      >
-                        <Volume2 className="w-5 h-5 text-blue-500" />
-                      </button>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '6px' }}>
-                    {quizCard.partOfSpeech && (
-                      <span className="pos-subtle" style={{ fontSize: '12px' }}>
-                        ({quizCard.partOfSpeech.toLowerCase()})
-                      </span>
-                    )}
-                    {mode === 'jp-vi' && (
-                      <span style={{ fontSize: '14px', color: '#1d4ed8', fontWeight: '600' }}>
-                        {quizCard.hanViet}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* 4 Choices */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-                  {quizOptions.map((opt, i) => {
-                    const isSelected = quizSelected === opt;
-                    const correct = mode === 'jp-vi' ? quizCard.viet : quizCard.kanji;
-                    const isCorrect = opt === correct;
-
-                    // If mode is vi-jp, opt is Japanese Kanji; find card to enable kana overlay on hold!
-                    const matchedCard = mode === 'vi-jp' ? DATA.find((d) => d.kanji === opt || d.kana === opt) : null;
-
-                    let bg = '#fff';
-                    let border = '#e5e7eb';
-                    let color = '#374151';
-
-                    if (quizAnswered) {
-                      if (isCorrect) {
-                        bg = '#10b981';
-                        border = '#10b981';
-                        color = '#fff';
-                      } else if (isSelected && !isCorrect) {
-                        bg = '#ef4444';
-                        border = '#ef4444';
-                        color = '#fff';
-                      } else {
-                        color = '#9ca3af';
-                      }
-                    }
-
-                    return (
-                      <button
-                        key={i}
-                        disabled={quizAnswered}
-                        onClick={() => handleQuizSelect(opt)}
-                        className="nav"
-                        style={{
-                          height: 'auto',
-                          minHeight: '48px',
-                          padding: '12px 14px',
-                          background: bg,
-                          borderColor: border,
-                          color: color,
-                          justifyContent: 'flex-start',
-                          textAlign: 'left',
-                          fontSize: '15px',
-                        }}
-                      >
-                        {matchedCard ? (
-                          <span
-                            className="jp-word-container"
-                            data-kanji-target="true"
-                            data-kanji={matchedCard.kanji}
-                            data-hanviet={matchedCard.hanViet}
-                            style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
-                          >
-                            {matchedCard.kanji !== matchedCard.kana && (
-                              <span className="kana-overlay" style={{ fontSize: '0.65em' }}>
-                                {matchedCard.kana}
-                              </span>
-                            )}
-                            <span className="kanji-text">{matchedCard.kanji}</span>
-                          </span>
-                        ) : (
-                          opt
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {quizAnswered && (
-                <div style={{ paddingTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-                  <button className="nav primary" onClick={handleQuizNext} style={{ width: '100%' }}>
-                    {quizPos + 1 < DATA.length ? 'Câu tiếp theo →' : 'Xem kết quả'}
-                  </button>
-                </div>
-              )}
+      {/* VIEW 4: Settings Screen (clean, no redundant titles or back button, just controls) */}
+      {activeView === 'settings' && (
+        <main className="settings-view">
+          {/* Section 1: Front Face Content Selection */}
+          <div className="setting-section">
+            <div className="setting-title">
+              <span>Front face</span>
             </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '30px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-              <div style={{ fontSize: '36px' }}>🎉</div>
-              <h2 style={{ fontSize: '22px', fontWeight: '700', color: '#111827' }}>
-                Hoàn thành bài kiểm tra!
-              </h2>
-              <p style={{ fontSize: '15px', color: '#4b5563' }}>
-                Bạn đã trả lời đúng <strong>{quizScore}</strong> / {DATA.length} câu (
-                {Math.round((quizScore / DATA.length) * 100)}%)
-              </p>
-              <button className="nav primary" onClick={handleQuizRestart} style={{ padding: '0 24px', height: '48px' }}>
-                Làm lại bài Quiz
+            <select
+              id="frontFaceSelect"
+              className="setting-select"
+              value={frontFaceOption}
+              onChange={(e) => setFrontFaceOption(e.target.value as FrontFaceOption)}
+            >
+              <option value="kanji">Kanji</option>
+              <option value="kana">Kana / On & Kun</option>
+              <option value="hanviet">Han-Viet</option>
+              <option value="meaning">Vietnamese meaning</option>
+              <option value="audio-jp">Japanese audio only</option>
+              <option value="audio-vn">Vietnamese audio only</option>
+            </select>
+          </div>
+
+          {/* Section 2: Audio Volume Tuning */}
+          <div className="setting-section">
+            <div className="setting-title">
+              <span>Volume</span>
+            </div>
+            <div className="volume-slider-row">
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={audioVolume}
+                onChange={(e) => setAudioVolume(parseFloat(e.target.value))}
+                className="volume-slider"
+              />
+              <span className="volume-val-badge">{Math.round(audioVolume * 100)}%</span>
+              <button
+                type="button"
+                className="topbar-icon-btn"
+                onClick={() => speakJapanese('日本語', 0.9, audioVolume)}
+                title="Test audio"
+                style={{ width: '32px', height: '32px' }}
+              >
+                <Volume2 className="w-4 h-4 text-blue-500" />
               </button>
             </div>
-          )}
+          </div>
+
+          {/* Section 3: Auto Read */}
+          <div className="setting-section">
+            <div className="setting-row">
+              <div className="setting-title">
+                <span>Auto read</span>
+              </div>
+              <label className="setting-toggle">
+                <input
+                  type="checkbox"
+                  checked={autoReadEnabled}
+                  onChange={(e) => setAutoReadEnabled(e.target.checked)}
+                />
+                <span className="setting-toggle-slider"></span>
+              </label>
+            </div>
+
+            {autoReadEnabled && (
+              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  type="button"
+                  className={`chip ${autoReadLang === 'jp' ? 'active' : ''}`}
+                  onClick={() => setAutoReadLang('jp')}
+                >
+                  JP
+                </button>
+                <button
+                  type="button"
+                  className={`chip ${autoReadLang === 'vn' ? 'active' : ''}`}
+                  onClick={() => setAutoReadLang('vn')}
+                >
+                  VN
+                </button>
+              </div>
+            )}
+          </div>
         </main>
       )}
+
 
       {/* Dashed trail & release destination indicator */}
       {isDragging && dragPos && (
@@ -1009,22 +1292,19 @@ export default function App() {
             zIndex: 48,
           }}
         >
-          {/* Projecting dragging radius (for Han-Viet button) */}
           {dragBtn === 'hanviet' && dragOrigin && (
             <>
-              {/* 70px projecting dragging radius boundary */}
               <circle
                 cx={dragOrigin.x}
                 cy={dragOrigin.y}
                 r="70"
                 fill="#8b5cf6"
-                fillOpacity={isProjecting ? 0.08 : 0.02}
+                fillOpacity="0.08"
                 stroke="#8b5cf6"
-                strokeWidth={isProjecting ? 1.8 : 1.2}
+                strokeWidth="1.5"
                 strokeDasharray="4 4"
                 opacity={isProjecting ? 0.75 : 0.3}
               />
-              {/* Center anchor dot */}
               <circle
                 cx={dragOrigin.x}
                 cy={dragOrigin.y}
@@ -1032,7 +1312,6 @@ export default function App() {
                 fill="#8b5cf6"
                 opacity="0.5"
               />
-              {/* Projected reticle across screenspace */}
               {isProjecting && projPoint && (
                 <g transform={`translate(${projPoint.x}, ${projPoint.y})`}>
                   <circle
@@ -1053,7 +1332,6 @@ export default function App() {
             </>
           )}
 
-          {/* Release destination indicator: small dashed outline circle when moving to a new snap slot (80px range) */}
           {targetSnapCoords && !isProjecting && (
             <g
               transform={`translate(${targetSnapCoords.x}, ${targetSnapCoords.y})`}
@@ -1078,7 +1356,7 @@ export default function App() {
         </svg>
       )}
 
-      {/* Draggable FAB 1: Kana reveal (Hold to reveal, drag to snap to 8 edge/corner positions) */}
+      {/* Draggable FAB 1: Kana reveal */}
       <button
         className={`fab fab-kana ${isFabPressed || showKana ? 'pressed' : ''} ${isDragging && dragBtn === 'kana' ? 'is-dragging' : ''}`}
         id="kanaHoldBtn"
@@ -1140,7 +1418,6 @@ export default function App() {
           const recentPt = history.find((p) => now - p.time <= 100);
           const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
 
-          // Quick swipe flick to corner: if total swipe was < 100ms
           const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
 
           if (isQuickSwipe) {
@@ -1157,7 +1434,7 @@ export default function App() {
               winSize.w,
               winSize.h,
               'kana',
-              { kana: snapKana, hanViet: snapHanViet, read: activeTab === 'flashcard' ? snapRead : undefined },
+              { kana: snapKana, hanViet: snapHanViet, read: activeView === 'flashcard' ? snapRead : undefined },
               SNAP_RANGE
             );
             if (newSnap) {
@@ -1183,11 +1460,11 @@ export default function App() {
         あ
       </button>
 
-      {/* Draggable FAB 2: Han-Viet word reveal (Within 70px = Project to screenspace; Outside 70px = Move button) */}
+      {/* Draggable FAB 2: Han-Viet word reveal */}
       <button
         className={`fab fab-hanviet ${isHanVietMode ? 'active-mode' : ''} ${isDragging && dragBtn === 'hanviet' ? 'is-dragging' : ''}`}
-        id="hanVietBtn"
-        title="Hán-Việt: Rê trong bán kính 70px để quét toàn màn hình / Kéo ra ngoài để di chuyển nút"
+        id="hanvietInspectBtn"
+        title="Hán-Việt: Chạm để bật chế độ tra từ / Kéo để chuyển vị trí"
         style={{
           left: `${dragBtn === 'hanviet' && dragPos ? dragPos.x : snapCoords.hanViet.x}px`,
           top: `${dragBtn === 'hanviet' && dragPos ? dragPos.y : snapCoords.hanViet.y}px`,
@@ -1226,40 +1503,25 @@ export default function App() {
           if (dist >= 10 && !dragStartRef.current.swipeStartTime) {
             dragStartRef.current.swipeStartTime = now;
           }
-          setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
 
-          // Drag within 70px range: project to screen space & snap to closest Kanji (70px snap range limit)
-          if (dist <= 70) {
-            setIsProjecting(true);
-            const originX = snapCoords.hanViet.x + 25;
-            const originY = snapCoords.hanViet.y + 25;
-
-            // Calculate max distance to the 4 corners of the viewport
-            const cornerDists = [
-              Math.hypot(0 - originX, 0 - originY),
-              Math.hypot(winSize.w - originX, 0 - originY),
-              Math.hypot(0 - originX, winSize.h - originY),
-              Math.hypot(winSize.w - originX, winSize.h - originY),
-            ];
-            const maxCornerDist = Math.max(...cornerDists);
-            const scale = maxCornerDist / 70;
-
-            const projX = Math.max(0, Math.min(winSize.w, originX + dx * scale));
-            const projY = Math.max(0, Math.min(winSize.h, originY + dy * scale));
-            setProjPoint({ x: projX, y: projY });
-
-            // Snap to closest kanji on screen within 70px snap range limit
-            const found = findNearestKanji(projX, projY, 70);
-            if (found) {
-              setActiveBubble(found);
-            } else {
-              setActiveBubble(null);
-            }
-          } else {
-            // Drag outside 70px range: user wants to move the button!
+          if (dist > 70) {
             setIsProjecting(false);
             setProjPoint(null);
             setActiveBubble(null);
+            setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
+          } else {
+            setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
+            setIsProjecting(true);
+
+            const factor = Math.max(winSize.w, winSize.h) / 38;
+            const targetX = Math.max(20, Math.min(winSize.w - 20, (snapCoords.hanViet.x + 25) + dx * factor));
+            const targetY = Math.max(30, Math.min(winSize.h - 30, (snapCoords.hanViet.y + 25) + dy * factor));
+            setProjPoint({ x: targetX, y: targetY });
+
+            const nearest = findNearestKanji(targetX, targetY, Infinity);
+            if (nearest) {
+              setActiveBubble(nearest);
+            }
           }
         }}
         onPointerUp={(e) => {
@@ -1282,7 +1544,6 @@ export default function App() {
           const recentPt = history.find((p) => now - p.time <= 100);
           const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
 
-          // Quick swipe flick to corner: if total swipe was < 100ms
           const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
 
           if (isQuickSwipe) {
@@ -1294,7 +1555,6 @@ export default function App() {
             const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapHanViet);
             setSnapHanViet(targetCorner);
           } else if (totalDist > 70) {
-            // Moved outside 70px -> user wants to move the button into new snap position (80px snap range)
             setActiveBubble(null);
             const newSnap = findSnapPositionWithinRange(
               e.clientX,
@@ -1302,17 +1562,15 @@ export default function App() {
               winSize.w,
               winSize.h,
               'hanviet',
-              { kana: snapKana, hanViet: snapHanViet, read: activeTab === 'flashcard' ? snapRead : undefined },
+              { kana: snapKana, hanViet: snapHanViet, read: activeView === 'flashcard' ? snapRead : undefined },
               SNAP_RANGE
             );
             if (newSnap) {
               setSnapHanViet(newSnap);
             }
           } else if (dragStartRef.current.moved) {
-            // Dragged within 70px projection range -> hide bubble and spring back to original snap slot
             setActiveBubble(null);
           } else {
-            // Tap -> toggle tap-select mode
             setIsHanVietMode((prev) => !prev);
             setActiveBubble(null);
           }
@@ -1340,15 +1598,15 @@ export default function App() {
       </button>
 
       {/* Draggable FAB 3: Floating Read Button (Only appears in flashcard page) */}
-      {activeTab === 'flashcard' && (
+      {activeView === 'flashcard' && (
         <button
           className={`fab fab-read ${isSpeaking ? 'speaking' : ''} ${isDragging && dragBtn === 'read' ? 'is-dragging' : ''}`}
           id="readFabBtn"
           title={
             !flipped
-              ? mode === 'jp-vi'
-                ? 'Đọc từ (Tiếng Nhật)'
-                : 'Đọc từ (Tiếng Việt)'
+              ? frontFaceOption === 'meaning' || frontFaceOption === 'audio-vn'
+                ? 'Đọc nghĩa tiếng Việt'
+                : 'Đọc từ tiếng Nhật'
               : 'Đọc câu ví dụ (Tiếng Nhật)'
           }
           style={{
@@ -1406,7 +1664,6 @@ export default function App() {
             const recentPt = history.find((p) => now - p.time <= 100);
             const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
 
-            // Quick swipe flick to corner: if total swipe was < 100ms
             const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
 
             if (isQuickSwipe) {
@@ -1430,7 +1687,6 @@ export default function App() {
                 setSnapRead(newSnap);
               }
             } else {
-              // Click / Tap -> Read aloud
               handleReadClick();
             }
 
@@ -1459,110 +1715,18 @@ export default function App() {
           winSize={winSize}
         />
       )}
-
-      {/* Simple JSON Modal */}
-      {showJsonModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(17,24,39,.5)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px',
-            zIndex: 100,
-          }}
-          onClick={() => setShowJsonModal(false)}
-        >
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: '20px',
-              maxWidth: '560px',
-              width: '100%',
-              maxHeight: '80vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 20px 40px rgba(0,0,0,.15)',
-              overflow: 'hidden',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div
-              style={{
-                padding: '14px 18px',
-                borderBottom: '1px solid #f0f1f4',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <span style={{ fontWeight: '700', fontSize: '15px', color: '#111827' }}>
-                Dữ liệu JSON (30 từ)
-              </span>
-              <button
-                className="audio-btn"
-                onClick={() => setShowJsonModal(false)}
-                title="Đóng"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '14px', background: '#0f172a' }}>
-              <pre style={{ fontSize: '12px', color: '#38bdf8', fontFamily: 'monospace', margin: 0 }}>
-                {JSON.stringify(DATA, null, 2)}
-              </pre>
-            </div>
-
-            {/* Modal Actions */}
-            <div
-              style={{
-                padding: '12px 18px',
-                borderTop: '1px solid #f0f1f4',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: '8px',
-                background: '#fff',
-              }}
-            >
-              <button
-                className="chip"
-                onClick={handleCopyJson}
-              >
-                {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                <span>{copied ? 'Đã chép' : 'Sao chép JSON'}</span>
-              </button>
-              <button
-                className="chip active"
-                onClick={handleDownloadJson}
-              >
-                <Download className="w-4 h-4" />
-                <span>Tải .json</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-/**
- * Floating Han-Viet Bubble that clamps itself strictly inside the screen viewport.
- * If the bubble would overflow either edge, it translates laterally,
- * while the indicator arrow shifts to continue pointing directly to the center of the target Kanji.
- */
+// Subcomponent: Han-Viet Bubble
 function HanVietBubbleView({
   activeBubble,
   winSize,
 }: {
   activeBubble: {
     kanji: string;
+    kana?: string;
     hanViet: string;
     meaning?: string;
     rect: DOMRect;
@@ -1571,79 +1735,57 @@ function HanVietBubbleView({
   };
   winSize: { w: number; h: number };
 }) {
-  const bubbleRef = useRef<HTMLDivElement>(null);
-  const [offset, setOffset] = useState<{ bubbleLeft: number; arrowOffset: number }>({
-    bubbleLeft: activeBubble.rect.left + activeBubble.rect.width / 2,
-    arrowOffset: 0,
+  const [bubblePos, setBubblePos] = useState<{ x: number; y: number; isFlipped: boolean }>({
+    x: 0,
+    y: 0,
+    isFlipped: false,
   });
 
   useLayoutEffect(() => {
-    const el = bubbleRef.current;
+    const el = activeBubble.element;
     if (!el) return;
-    const width = el.offsetWidth || 180;
-    const kanjiCenterX = activeBubble.rect.left + activeBubble.rect.width / 2;
-    const margin = 12; // Viewport safety margin
 
-    // The bubble's ideal center is kanjiCenterX
-    const halfWidth = width / 2;
-    let clampedCenterX = kanjiCenterX;
+    const r = el.getBoundingClientRect();
+    const centerX = r.left + r.width / 2;
+    const isFlipped = r.top < 95;
+    const centerY = isFlipped ? r.bottom + 6 : r.top - 6;
 
-    // Check left & right screen boundaries
-    if (clampedCenterX - halfWidth < margin) {
-      clampedCenterX = margin + halfWidth;
-    } else if (clampedCenterX + halfWidth > winSize.w - margin) {
-      clampedCenterX = winSize.w - margin - halfWidth;
-    }
-
-    // Shift arrow by the difference between the actual kanji center and the clamped bubble center
-    // Clamped so the arrow doesn't slide past the rounded corners of the bubble
-    const maxArrowShift = Math.max(0, halfWidth - 20);
-    const arrowShift = Math.max(-maxArrowShift, Math.min(maxArrowShift, kanjiCenterX - clampedCenterX));
-
-    setOffset({
-      bubbleLeft: clampedCenterX,
-      arrowOffset: arrowShift,
+    setBubblePos({
+      x: centerX,
+      y: centerY,
+      isFlipped,
     });
-  }, [activeBubble, winSize.w]);
+  }, [activeBubble]);
+
+  const bubbleLeft = Math.max(30, Math.min(winSize.w - 30, bubblePos.x));
 
   return (
     <div
-      ref={bubbleRef}
-      className="hanviet-bubble"
+      className={`hanviet-bubble ${bubblePos.isFlipped ? 'bubble-flipped' : ''}`}
       style={{
-        position: 'fixed',
-        left: `${offset.bubbleLeft}px`,
-        transform: 'translate(-50%, 0)',
-        ...(activeBubble.isFlipped
-          ? {
-              top: `${activeBubble.rect.bottom + 8}px`,
-            }
-          : {
-              bottom: `${winSize.h - activeBubble.rect.top + 8}px`,
-            }),
+        left: `${bubbleLeft}px`,
+        top: `${bubblePos.y}px`,
       }}
     >
-      {activeBubble.isFlipped && (
-        <div
-          className="bubble-arrow arrow-up"
-          style={{ transform: `translateX(${offset.arrowOffset}px)` }}
-        />
-      )}
-      <div className="bubble-content">
-        <span className="bubble-hv">{activeBubble.hanViet}</span>
-        <span className="bubble-sub">{activeBubble.kanji}</span>
+      <div className="bubble-card">
+        <span className="bubble-title">{activeBubble.hanViet}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span className="bubble-sub">{activeBubble.kanji}</span>
+          {activeBubble.kana && (
+            <span style={{ fontSize: '12px', color: '#60a5fa', fontWeight: '600' }}>
+              ({activeBubble.kana})
+            </span>
+          )}
+        </div>
         {activeBubble.meaning && (
           <div className="bubble-meaning">
             {activeBubble.meaning}
           </div>
         )}
       </div>
-      {!activeBubble.isFlipped && (
-        <div
-          className="bubble-arrow arrow-down"
-          style={{ transform: `translateX(${offset.arrowOffset}px)` }}
-        />
-      )}
+      <div
+        className={`bubble-arrow ${bubblePos.isFlipped ? 'arrow-up' : 'arrow-down'}`}
+      />
     </div>
   );
 }

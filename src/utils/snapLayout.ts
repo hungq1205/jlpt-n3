@@ -50,8 +50,8 @@ export function getSnapCoords(
   }
 
   const mx = 16;
-  const myTop = 18;
-  const myBot = 82; // Above bottom controls/navigation
+  const myTop = 56;
+  const myBot = 22;
 
   const getBase = (p: SnapPosition): Point => {
     switch (p) {

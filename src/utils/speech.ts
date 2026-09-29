@@ -1,7 +1,7 @@
 /**
  * Web Speech API helper for Japanese pronunciation
  */
-export const speakJapanese = (text: string, rate = 0.9) => {
+export const speakJapanese = (text: string, rate = 0.9, volume = 1) => {
   if (!('speechSynthesis' in window)) {
     return;
   }
@@ -15,6 +15,7 @@ export const speakJapanese = (text: string, rate = 0.9) => {
   const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.lang = 'ja-JP';
   utterance.rate = rate;
+  utterance.volume = Math.max(0, Math.min(1, volume));
 
   // Try to pick a Japanese voice if available
   const voices = window.speechSynthesis.getVoices();
@@ -29,7 +30,7 @@ export const speakJapanese = (text: string, rate = 0.9) => {
 /**
  * Web Speech API helper for Vietnamese pronunciation
  */
-export const speakVietnamese = (text: string, rate = 0.95) => {
+export const speakVietnamese = (text: string, rate = 0.95, volume = 1) => {
   if (!('speechSynthesis' in window)) {
     return;
   }
@@ -41,6 +42,7 @@ export const speakVietnamese = (text: string, rate = 0.95) => {
   const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.lang = 'vi-VN';
   utterance.rate = rate;
+  utterance.volume = Math.max(0, Math.min(1, volume));
 
   // Try to pick a Vietnamese voice if available
   const voices = window.speechSynthesis.getVoices();
@@ -51,4 +53,5 @@ export const speakVietnamese = (text: string, rate = 0.95) => {
 
   window.speechSynthesis.speak(utterance);
 };
+
 
