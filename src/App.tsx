@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
-import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders } from 'lucide-react';
+import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders, GraduationCap } from 'lucide-react';
 import { LESSONS, Lesson, Flashcard, FlashcardType } from './data/flashcards';
 import { speakJapanese, speakVietnamese } from './utils/speech';
 import { getHanViet, getKanjiMeaning } from './data/hanVietDict';
 import { getSnapCoords, findNearestSnapPosition, findSnapPositionWithinRange, getSwipeCorner, SnapPosition, Point, SNAP_RANGE } from './utils/snapLayout';
+import { GrammarView } from './components/GrammarView';
 
 export type FrontFaceOption = 'kanji' | 'kana' | 'hanviet' | 'meaning' | 'audio-jp' | 'audio-vn';
 
 export default function App() {
   // Navigation & View State
-  const [activeView, setActiveView] = useState<'flashcard' | 'list' | 'lessons' | 'settings'>('flashcard');
+  const [activeView, setActiveView] = useState<'flashcard' | 'list' | 'grammar' | 'lessons' | 'settings'>('flashcard');
   const [selectedLessonId, setSelectedLessonId] = useState<string>('lesson-1');
 
   // Retrieve current active lesson and its cards
@@ -31,8 +32,13 @@ export default function App() {
     const saved = localStorage.getItem('kanji_auto_read');
     return saved !== null ? saved === 'true' : true;
   });
-  const [autoReadLang, setAutoReadLang] = useState<'jp' | 'vn'>(() => {
-    return (localStorage.getItem('kanji_auto_read_lang') as 'jp' | 'vn') || 'jp';
+  const [hanVietSensitivity, setHanVietSensitivity] = useState<number>(() => {
+    const saved = localStorage.getItem('kanji_hv_sensitivity');
+    return saved !== null ? parseInt(saved, 10) : 70;
+  });
+  const [fabTransparency, setFabTransparency] = useState<number>(() => {
+    const saved = localStorage.getItem('kanji_fab_transparency');
+    return saved !== null ? parseInt(saved, 10) : 0;
   });
 
   // Save settings when changed
@@ -49,8 +55,14 @@ export default function App() {
   }, [autoReadEnabled]);
 
   useEffect(() => {
-    localStorage.setItem('kanji_auto_read_lang', autoReadLang);
-  }, [autoReadLang]);
+    localStorage.setItem('kanji_hv_sensitivity', hanVietSensitivity.toString());
+  }, [hanVietSensitivity]);
+
+  useEffect(() => {
+    localStorage.setItem('kanji_fab_transparency', fabTransparency.toString());
+  }, [fabTransparency]);
+
+  const restingFabOpacity = Math.max(0.08, (100 - fabTransparency) / 100);
 
   // Card deck order & position
   const [order, setOrder] = useState<number[]>(() => cards.map((_, i) => i));
@@ -135,8 +147,9 @@ export default function App() {
 
   // Actions
   const handleFlip = useCallback(() => {
+    if (isHanVietMode || Date.now() < suppressClickUntilRef.current) return;
     setFlipped((prev) => !prev);
-  }, []);
+  }, [isHanVietMode]);
 
   const handleNext = useCallback(() => {
     setFlipped(false);
@@ -159,6 +172,38 @@ export default function App() {
     setFlipped(false);
   }, []);
 
+  // Helper to read card according to selected frontFaceOption
+  const readCurrentCardFront = useCallback(() => {
+    if (!currentCard) return;
+
+    switch (frontFaceOption) {
+      case 'meaning':
+      case 'audio-vn':
+        speakVietnamese(currentCard.viet, 0.95, audioVolume);
+        break;
+
+      case 'hanviet':
+        speakVietnamese(currentCard.hanViet, 0.95, audioVolume);
+        break;
+
+      case 'kana':
+        if (currentCard.type === 'kanji') {
+          // If that's on kun then read those out
+          const onKun = [currentCard.onyomi, currentCard.kunyomi].filter(Boolean).join('、 ') || currentCard.kana;
+          speakJapanese(onKun, 0.9, audioVolume);
+        } else {
+          speakJapanese(currentCard.kana, 0.9, audioVolume);
+        }
+        break;
+
+      case 'kanji':
+      case 'audio-jp':
+      default:
+        speakJapanese(currentCard.kanji, 0.9, audioVolume);
+        break;
+    }
+  }, [currentCard, frontFaceOption, audioVolume]);
+
   // Auto-read on card change
   const isFirstMountRef = useRef<boolean>(true);
   useEffect(() => {
@@ -169,15 +214,11 @@ export default function App() {
     if (!autoReadEnabled || activeView !== 'flashcard' || !currentCard) return;
 
     const timer = setTimeout(() => {
-      if (autoReadLang === 'jp') {
-        speakJapanese(currentCard.kanji, 0.9, audioVolume);
-      } else {
-        speakVietnamese(currentCard.viet, 0.95, audioVolume);
-      }
+      readCurrentCardFront();
     }, 180);
 
     return () => clearTimeout(timer);
-  }, [pos, selectedLessonId, autoReadEnabled, autoReadLang, activeView, audioVolume, currentCard]);
+  }, [pos, selectedLessonId, autoReadEnabled, activeView, currentCard, readCurrentCardFront]);
 
   // Audio trigger helper with volume
   const playAudio = useCallback((e: React.MouseEvent | React.TouchEvent, text: string, isVn = false) => {
@@ -190,8 +231,8 @@ export default function App() {
   }, [audioVolume]);
 
   // Floating read button action:
-  // - If front face: reads based on front face / selected language
-  // - If back face: reads sentence (always Japanese)
+  // - If front face: reads whatever selected
+  // - If back face: reads sentence (Japanese)
   const handleReadClick = useCallback(() => {
     if (activeView !== 'flashcard' || !currentCard) return;
 
@@ -199,18 +240,11 @@ export default function App() {
     setTimeout(() => setIsSpeaking(false), 900);
 
     if (!flipped) {
-      if (frontFaceOption === 'meaning' || frontFaceOption === 'audio-vn') {
-        speakVietnamese(currentCard.viet, 0.95, audioVolume);
-      } else if (frontFaceOption === 'kana') {
-        speakJapanese(currentCard.kana.split('/')[0].trim() || currentCard.kanji, 0.9, audioVolume);
-      } else {
-        // default kanji or audio-jp
-        speakJapanese(currentCard.kanji, 0.9, audioVolume);
-      }
+      readCurrentCardFront();
     } else {
       speakJapanese(currentCard.example, 0.9, audioVolume);
     }
-  }, [activeView, currentCard, flipped, frontFaceOption, audioVolume]);
+  }, [activeView, currentCard, flipped, readCurrentCardFront, audioVolume]);
 
   // Furigana hold reveal
   const startReveal = useCallback(() => {
@@ -289,7 +323,7 @@ export default function App() {
   }, []);
 
   // Helper to find nearest kanji word on screen
-  const findNearestKanji = useCallback((x: number, y: number, maxDist = 70) => {
+  const findNearestKanji = useCallback((x: number, y: number, maxDist = hanVietSensitivity) => {
     // 1. Direct hit check via elementFromPoint
     const hitEl = document.elementFromPoint(x, y);
     if (hitEl) {
@@ -361,7 +395,7 @@ export default function App() {
       };
     }
     return null;
-  }, [flipped]);
+  }, [flipped, hanVietSensitivity]);
 
   // Highlight active target kanji
   useEffect(() => {
@@ -386,6 +420,7 @@ export default function App() {
 
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation?.();
 
       let clientX = 0;
       let clientY = 0;
@@ -400,7 +435,7 @@ export default function App() {
         clientY = (e as MouseEvent).clientY;
       }
 
-      const found = findNearestKanji(clientX, clientY, 70);
+      const found = findNearestKanji(clientX, clientY, hanVietSensitivity);
       if (found) {
         setActiveBubble(found);
       } else {
@@ -410,11 +445,23 @@ export default function App() {
       }
     };
 
+    const handleInterceptClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.closest('.fab') || target.closest('.topbar') || target.closest('.controls-dock') || target.closest('.controls'))) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation?.();
+    };
+
     window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('click', handleInterceptClick, true);
     return () => {
       window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('click', handleInterceptClick, true);
     };
-  }, [isHanVietMode, findNearestKanji]);
+  }, [isHanVietMode, findNearestKanji, hanVietSensitivity]);
 
   // Compute resting coordinates for draggable FABs
   const snapCoords = useMemo(() => {
@@ -720,7 +767,7 @@ export default function App() {
   return (
     <div className={`app ${showKana ? 'show-kana' : ''}`}>
       {/* Top Header Bar */}
-      <header className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+      <header className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {/* Quick Active Lesson Chip: Book icon + number (click toggles lesson view) */}
           <button
@@ -734,30 +781,54 @@ export default function App() {
           </button>
         </div>
 
-        {/* Center: Icon-only Tabs (Cards / List) */}
+        {/* Center: Tabs (Cards / List / Grammar) */}
         <div className="chip-group" style={{ margin: '0 auto' }}>
           <button
             className={`chip ${activeView === 'flashcard' ? 'active' : ''}`}
-            onClick={() => setActiveView('flashcard')}
-            title="Cards"
-            style={{ padding: '0 12px', height: '34px' }}
+            onClick={() => {
+              setActiveView('flashcard');
+              setIsHanVietMode(false);
+              setActiveBubble(null);
+            }}
+            title="Flashcards"
+            style={{ padding: '0 10px', height: '34px' }}
           >
             <Layers className="w-4 h-4" />
           </button>
           <button
             className={`chip ${activeView === 'list' ? 'active' : ''}`}
-            onClick={() => setActiveView('list')}
-            title="List"
-            style={{ padding: '0 12px', height: '34px' }}
+            onClick={() => {
+              setActiveView('list');
+              setIsHanVietMode(false);
+              setActiveBubble(null);
+            }}
+            title="Word List"
+            style={{ padding: '0 10px', height: '34px' }}
           >
             <List className="w-4 h-4" />
+          </button>
+          <button
+            className={`chip ${activeView === 'grammar' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveView('grammar');
+              setIsHanVietMode(false);
+              setActiveBubble(null);
+            }}
+            title="Grammar & Quiz"
+            style={{ padding: '0 10px', height: '34px' }}
+          >
+            <GraduationCap className="w-4 h-4" />
           </button>
         </div>
 
         {/* Right side: Counter & Settings Button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div className="counter" id="counter">
-            {activeView === 'list' ? `${filteredList.length}` : `${pos + 1} / ${order.length}`}
+            {activeView === 'list'
+              ? `${filteredList.length}`
+              : activeView === 'grammar'
+              ? 'Grammar'
+              : `${pos + 1} / ${order.length}`}
           </div>
 
           {/* Settings button (click toggles settings view) */}
@@ -792,9 +863,6 @@ export default function App() {
               <section className="face front" id="front">
                 <div className="label">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: '700', color: currentCard.type === 'kanji' ? '#b45309' : '#2563eb' }}>
-                      {currentCard.type === 'kanji' ? 'Kanji' : 'Vocab'}
-                    </span>
                     {currentCard.partOfSpeech && (
                       <span className="pos-subtle">({currentCard.partOfSpeech.toLowerCase()})</span>
                     )}
@@ -813,17 +881,12 @@ export default function App() {
                 <div className="big jp">
                   {renderFrontFaceContent()}
                 </div>
-
-                <div className="hint">
-                  Tap to flip
-                </div>
               </section>
 
               {/* Back Face (Reveals all other information) */}
               <section className="face back" id="back">
                 <div className="label">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>{currentCard.type === 'kanji' ? 'Kanji' : 'Answer'}</span>
                     {currentCard.partOfSpeech && (
                       <span className="pos-subtle">({currentCard.partOfSpeech.toLowerCase()})</span>
                     )}
@@ -880,40 +943,36 @@ export default function App() {
                       <strong>{currentCard.viet}</strong>
                     </div>
 
-                    {/* Related vocabulary list (with kana review on top and Hán-Việt tap review) */}
+                    {/* Related vocabulary list (3x3 grid, click on div reads out) */}
                     {currentCard.vocabList && currentCard.vocabList.length > 0 && (
                       <div className="kanji-vocab-section">
                         <div className="section-title">Related Vocab ({currentCard.vocabList.length})</div>
-                        {currentCard.vocabList.map((item, idx) => (
-                          <div key={idx} className="kanji-vocab-row">
-                            <div className="vocab-top-row">
-                              <div className="vocab-jp-wrap">
-                                <ruby
-                                  className="vocab-kanji jp-word-container"
-                                  data-kanji-target="true"
-                                  data-kanji={item.kanji}
-                                  data-kana={item.kana}
-                                  data-hanviet={item.hanViet}
-                                  data-meaning={item.meaning}
-                                  style={{ cursor: isHanVietMode ? 'crosshair' : 'inherit' }}
-                                >
-                                  <span className="kanji-text">{item.kanji}</span>
-                                  <rt className="ruby-text">{item.kana}</rt>
-                                </ruby>
-                                <span className="vocab-hv">{item.hanViet}</span>
-                              </div>
-                              <button
-                                type="button"
-                                className="mini-audio-btn"
-                                onClick={(e) => playAudio(e, item.kanji)}
-                                title="Play"
+                        <div className="kanji-vocab-grid">
+                          {currentCard.vocabList.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="kanji-vocab-chip"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                playAudio(e, item.kanji);
+                              }}
+                              title={`Play ${item.kanji}`}
+                            >
+                              <ruby
+                                className="vocab-kanji jp-word-container"
+                                data-kanji-target="true"
+                                data-kanji={item.kanji}
+                                data-kana={item.kana}
+                                data-hanviet={item.hanViet}
+                                data-meaning={item.meaning}
+                                style={{ cursor: isHanVietMode ? 'crosshair' : 'pointer' }}
                               >
-                                <Volume2 className="w-3.5 h-3.5 text-blue-500" />
-                              </button>
+                                <span className="kanji-text">{item.kanji}</span>
+                                <rt className="ruby-text">{item.kana}</rt>
+                              </ruby>
                             </div>
-                            <div className="vocab-meaning">{item.meaning}</div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                     )}
                   </>
@@ -1077,10 +1136,6 @@ export default function App() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '11px', fontWeight: '700', color: w.type === 'kanji' ? '#b45309' : '#6b7280', background: w.type === 'kanji' ? '#fef3c7' : '#f3f4f6', padding: '2px 6px', borderRadius: '4px' }}>
-                      {w.type === 'kanji' ? 'Kanji' : 'Vocab'}
-                    </span>
-
                     <ruby
                       className="jp-word-container"
                       data-kanji-target="true"
@@ -1158,7 +1213,23 @@ export default function App() {
         </main>
       )}
 
-      {/* VIEW 3: Lesson Selection Screen (no redundant titles or back button, just cards) */}
+      {/* VIEW 3: Grammar & Practice Quiz Screen */}
+      {activeView === 'grammar' && (
+        <GrammarView
+          lessonId={selectedLessonId}
+          isHanVietMode={isHanVietMode}
+          audioVolume={audioVolume}
+          onSpeak={(text, isVn) => {
+            if (isVn) {
+              speakVietnamese(text, 0.95, audioVolume);
+            } else {
+              speakJapanese(text, 0.9, audioVolume);
+            }
+          }}
+        />
+      )}
+
+      {/* VIEW 4: Lesson Selection Screen (no redundant titles or back button, just cards) */}
       {activeView === 'lessons' && (
         <main className="lessons-view">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1180,7 +1251,7 @@ export default function App() {
                   <p className="lesson-desc">{lesson.description}</p>
                   <div className="lesson-stats">
                     <span className="lesson-stat-pill">
-                      {kanjiCount} Kanji • {vocabCount} Vocab
+                      {kanjiCount} Kanji • {vocabCount} Vocab • {lesson.id === 'lesson-1' ? '7' : '2'} Grammar
                     </span>
                   </div>
                 </div>
@@ -1257,24 +1328,44 @@ export default function App() {
               </label>
             </div>
 
-            {autoReadEnabled && (
-              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                <button
-                  type="button"
-                  className={`chip ${autoReadLang === 'jp' ? 'active' : ''}`}
-                  onClick={() => setAutoReadLang('jp')}
-                >
-                  JP
-                </button>
-                <button
-                  type="button"
-                  className={`chip ${autoReadLang === 'vn' ? 'active' : ''}`}
-                  onClick={() => setAutoReadLang('vn')}
-                >
-                  VN
-                </button>
-              </div>
-            )}
+          </div>
+
+          {/* Section 4: Han-Viet Reveal Sensitivity Slider */}
+          <div className="setting-section">
+            <div className="setting-title">
+              <span>Han-Viet sensitivity</span>
+            </div>
+            <div className="volume-slider-row">
+              <input
+                type="range"
+                min="30"
+                max="160"
+                step="5"
+                value={hanVietSensitivity}
+                onChange={(e) => setHanVietSensitivity(parseInt(e.target.value, 10))}
+                className="volume-slider"
+              />
+              <span className="volume-val-badge">{hanVietSensitivity}px</span>
+            </div>
+          </div>
+
+          {/* Section 5: Floating Buttons Transparency Slider */}
+          <div className="setting-section">
+            <div className="setting-title">
+              <span>Floating button transparency</span>
+            </div>
+            <div className="volume-slider-row">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={fabTransparency}
+                onChange={(e) => setFabTransparency(parseInt(e.target.value, 10))}
+                className="volume-slider"
+              />
+              <span className="volume-val-badge">{fabTransparency}%</span>
+            </div>
           </div>
         </main>
       )}
@@ -1364,7 +1455,8 @@ export default function App() {
         style={{
           left: `${dragBtn === 'kana' && dragPos ? dragPos.x : snapCoords.kana.x}px`,
           top: `${dragBtn === 'kana' && dragPos ? dragPos.y : snapCoords.kana.y}px`,
-          transition: dragBtn === 'kana' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          opacity: restingFabOpacity,
+          transition: dragBtn === 'kana' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
         }}
         onPointerDown={(e) => {
           e.preventDefault();
@@ -1468,7 +1560,8 @@ export default function App() {
         style={{
           left: `${dragBtn === 'hanviet' && dragPos ? dragPos.x : snapCoords.hanViet.x}px`,
           top: `${dragBtn === 'hanviet' && dragPos ? dragPos.y : snapCoords.hanViet.y}px`,
-          transition: dragBtn === 'hanviet' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          opacity: restingFabOpacity,
+          transition: dragBtn === 'hanviet' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
         }}
         onPointerDown={(e) => {
           e.preventDefault();
@@ -1612,7 +1705,8 @@ export default function App() {
           style={{
             left: `${dragBtn === 'read' && dragPos ? dragPos.x : snapCoords.read.x}px`,
             top: `${dragBtn === 'read' && dragPos ? dragPos.y : snapCoords.read.y}px`,
-            transition: dragBtn === 'read' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            opacity: restingFabOpacity,
+            transition: dragBtn === 'read' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
           }}
           onPointerDown={(e) => {
             e.preventDefault();
@@ -1735,10 +1829,24 @@ function HanVietBubbleView({
   };
   winSize: { w: number; h: number };
 }) {
-  const [bubblePos, setBubblePos] = useState<{ x: number; y: number; isFlipped: boolean }>({
-    x: 0,
-    y: 0,
-    isFlipped: false,
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [bubbleLayout, setBubbleLayout] = useState<{
+    cardX: number;
+    arrowX: number;
+    y: number;
+    isFlipped: boolean;
+  }>(() => {
+    const el = activeBubble.element;
+    const r = el ? el.getBoundingClientRect() : activeBubble.rect;
+    const centerX = r.left + r.width / 2;
+    const isFlipped = r.top < 110;
+    const y = isFlipped ? r.bottom + 8 : r.top - 8;
+    return {
+      cardX: Math.max(12, Math.min(winSize.w - 180, centerX - 80)),
+      arrowX: 80,
+      y,
+      isFlipped,
+    };
   });
 
   useLayoutEffect(() => {
@@ -1746,25 +1854,38 @@ function HanVietBubbleView({
     if (!el) return;
 
     const r = el.getBoundingClientRect();
-    const centerX = r.left + r.width / 2;
-    const isFlipped = r.top < 95;
-    const centerY = isFlipped ? r.bottom + 6 : r.top - 6;
+    const targetCenterX = r.left + r.width / 2;
+    const isFlipped = r.top < 110;
+    const y = isFlipped ? r.bottom + 8 : r.top - 8;
 
-    setBubblePos({
-      x: centerX,
-      y: centerY,
+    const bubbleEl = bubbleRef.current;
+    const width = bubbleEl ? bubbleEl.offsetWidth : 160;
+
+    const margin = 12;
+    const minX = margin;
+    const maxX = Math.max(minX, winSize.w - width - margin);
+    const idealX = targetCenterX - width / 2;
+    const cardX = Math.max(minX, Math.min(maxX, idealX));
+
+    // Calculate position of arrow relative to card
+    const arrowOffset = targetCenterX - cardX;
+    const clampedArrowX = Math.max(16, Math.min(width - 16, arrowOffset));
+
+    setBubbleLayout({
+      cardX,
+      arrowX: clampedArrowX,
+      y,
       isFlipped,
     });
-  }, [activeBubble]);
-
-  const bubbleLeft = Math.max(30, Math.min(winSize.w - 30, bubblePos.x));
+  }, [activeBubble, winSize.w]);
 
   return (
     <div
-      className={`hanviet-bubble ${bubblePos.isFlipped ? 'bubble-flipped' : ''}`}
+      ref={bubbleRef}
+      className={`hanviet-bubble ${bubbleLayout.isFlipped ? 'bubble-flipped' : ''}`}
       style={{
-        left: `${bubbleLeft}px`,
-        top: `${bubblePos.y}px`,
+        left: `${bubbleLayout.cardX}px`,
+        top: `${bubbleLayout.y}px`,
       }}
     >
       <div className="bubble-card">
@@ -1784,7 +1905,10 @@ function HanVietBubbleView({
         )}
       </div>
       <div
-        className={`bubble-arrow ${bubblePos.isFlipped ? 'arrow-up' : 'arrow-down'}`}
+        className={`bubble-arrow ${bubbleLayout.isFlipped ? 'arrow-up' : 'arrow-down'}`}
+        style={{
+          left: `${bubbleLayout.arrowX}px`,
+        }}
       />
     </div>
   );

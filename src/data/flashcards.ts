@@ -976,10 +976,289 @@ export const LESSON_1_BASE_VOCAB_CARDS: Flashcard[] = [
 ];
 
 // Combine all cards for Lesson 1 (Kanji cards first, then related vocab, then base vocab)
+
+// Newly merged N3 vocabulary additions for Lesson 1
+export const LESSON_1_VOCAB_ADDITIONS: Flashcard[] = [
+  {
+    "id": 143,
+    "type": "vocab",
+    "kanji": "後悔",
+    "kana": "こうかい",
+    "viet": "hối hận, ăn năn",
+    "hanViet": "HẬU HỐI",
+    "partOfSpeech": "Danh từ",
+    "example": "あの時、彼女を呼び止めなかったことを、今でも後悔しています。",
+    "exampleRuby": "あの時[とき]、彼女[かのじょ]を呼[よ]び止[と]めなかったことを、今[いま]でも後悔[こうかい]しています。",
+    "exampleKana": "あのとき、かのじょをよびとめなかったことを、いまでもこうかいしています。",
+    "exampleViet": "Tôi vẫn hối hận vì lúc đó đã không gọi cô ấy lại."
+  },
+  {
+    "id": 144,
+    "type": "vocab",
+    "kanji": "寝坊",
+    "kana": "ねぼう",
+    "viet": "ngủ quên, ngủ nướng",
+    "hanViet": "TẨM PHƯỜNG",
+    "partOfSpeech": "Danh từ",
+    "example": "寝坊して授業に遅れてしまった。",
+    "exampleRuby": "寝坊[ねぼう]して授業[じゅぎょう]に遅[おく]れてしまった。",
+    "exampleKana": "ねぼうしてじゅぎょうにおくれてしまった。",
+    "exampleViet": "Vì ngủ quên nên tôi đã đến lớp muộn."
+  },
+  {
+    "id": 145,
+    "type": "vocab",
+    "kanji": "遅刻",
+    "kana": "ちこく",
+    "viet": "trễ giờ, muộn giờ",
+    "hanViet": "TRÌ KHẮC",
+    "partOfSpeech": "Danh từ",
+    "example": "昨日は寝坊して遅刻しそうになったから、今日は早く起きた。",
+    "exampleRuby": "昨日[きのう]は寝坊[ねぼう]して遅刻[ちこく]しそうになったから、今日[きょう]は早[はや]く起[お]きた。",
+    "exampleKana": "きのうはねぼうしてちこくしそうになったから、きょうははやくおきた。",
+    "exampleViet": "Hôm qua suýt bị muộn vì ngủ quên, nên hôm nay tôi dậy sớm."
+  },
+  {
+    "id": 146,
+    "type": "vocab",
+    "kanji": "貯金",
+    "kana": "ちょきん",
+    "viet": "tiền tiết kiệm, tiết kiệm tiền",
+    "hanViet": "TRỮ KIM",
+    "partOfSpeech": "Danh từ",
+    "example": "車を買うために貯金している。",
+    "exampleRuby": "車[くるま]を買[か]うために貯金[ちょきん]している。",
+    "exampleKana": "くるまをかうためにちょきんしている。",
+    "exampleViet": "Tôi đang tiết kiệm để mua xe ô tô."
+  },
+  {
+    "id": 147,
+    "type": "vocab",
+    "kanji": "参加",
+    "kana": "さんか",
+    "viet": "tham gia",
+    "hanViet": "THAM GIA",
+    "partOfSpeech": "Danh từ",
+    "example": "飲み会への参加を希望する方は、私にメールしてください。",
+    "exampleRuby": "飲[の]み会[かい]への参加[さんか]を希望[きぼう]する方[かた]は、私[わたし]にメールしてください。",
+    "exampleKana": "のみかいへのさんかをきぼうするかたは、わたしにめーるしてください。",
+    "exampleViet": "Những ai muốn tham gia buổi liên hoan thì hãy gửi email cho tôi."
+  },
+  {
+    "id": 148,
+    "type": "vocab",
+    "kanji": "検査",
+    "kana": "けんさ",
+    "viet": "kiểm tra, xét nghiệm, kiểm định",
+    "hanViet": "KIỂM TRA",
+    "partOfSpeech": "Danh từ",
+    "example": "空港では、持ち物検査がある。",
+    "exampleRuby": "空港[くうこう]では、持[も]ち物[もの]検査[けんさ]がある。",
+    "exampleKana": "くうこうでは、もちものけんさがある。",
+    "exampleViet": "Có kiểm tra hành lý ở sân bay."
+  },
+  {
+    "id": 149,
+    "type": "vocab",
+    "kanji": "取り消す",
+    "kana": "とりけす",
+    "viet": "hủy bỏ, xóa bỏ",
+    "hanViet": "THỦ TIÊU",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "旅行に行けなくなったので、ホテルの予約を取り消した。",
+    "exampleRuby": "旅行[りょこう]に行[い]けなくなったので、ホテルの予約[よやく]を取[と]り消[け]した。",
+    "exampleKana": "りょこうにいけなくなったので、ほてるのよやくをとりけした。",
+    "exampleViet": "Vì không thể đi du lịch được nữa nên tôi đã hủy đặt khách sạn."
+  },
+  {
+    "id": 150,
+    "type": "vocab",
+    "kanji": "感じる",
+    "kana": "かんじる",
+    "viet": "cảm thấy",
+    "hanViet": "CẢM",
+    "partOfSpeech": "Động từ (Nhóm 2)",
+    "example": "今日は昨日より暖かく感じる。",
+    "exampleRuby": "今日[きょう]は昨日[きのう]より暖[あたた]かく感[かん]じる。",
+    "exampleKana": "きょうはきのうよりあたたかくかんじる。",
+    "exampleViet": "Hôm nay tôi cảm thấy ấm hơn hôm qua."
+  },
+  {
+    "id": 151,
+    "type": "vocab",
+    "kanji": "知り合う",
+    "kana": "しりあう",
+    "viet": "quen biết, làm quen",
+    "hanViet": "TRI HỢP",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "このイベントで、たくさんの人と知り合うことができました。",
+    "exampleRuby": "このイベントで、たくさんの人[ひと]と知[し]り合[あ]うことができました。",
+    "exampleKana": "このいべんとで、たくさんのひととしりあうことができました。",
+    "exampleViet": "Nhờ sự kiện này, tôi đã quen được rất nhiều người."
+  },
+  {
+    "id": 152,
+    "type": "vocab",
+    "kanji": "始まる",
+    "kana": "はじまる",
+    "viet": "bắt đầu, khởi đầu",
+    "hanViet": "THỦY",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "会議が始まる前に、参加者にこの資料を回してください。",
+    "exampleRuby": "会議[かいぎ]が始[はじ]まる前[まえ]に、参加者[さんかしゃ]にこの資料[しりょう]を回[まわ]してください。",
+    "exampleKana": "かいぎがはじまるまえに、さんかしゃにこのしりょうをまわしてください。",
+    "exampleViet": "Trước khi cuộc họp bắt đầu, hãy chuyển tài liệu này cho những người tham dự."
+  },
+  {
+    "id": 153,
+    "type": "vocab",
+    "kanji": "願う",
+    "kana": "ねがう",
+    "viet": "mong muốn, cầu xin",
+    "hanViet": "NGUYỆN",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "家族がみんな健康に過ごせることを願う。",
+    "exampleRuby": "家族[かぞく]がみんな健康[けんこう]に過[す]ごせることを願[ねが]う。",
+    "exampleKana": "かぞくがみんなけんこうにすごせることをねがう。",
+    "exampleViet": "Tôi cầu mong cả gia đình luôn khỏe mạnh."
+  },
+  {
+    "id": 154,
+    "type": "vocab",
+    "kanji": "祈る",
+    "kana": "いのる",
+    "viet": "cầu nguyện",
+    "hanViet": "KÌ",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "世界平和のために祈る。",
+    "exampleRuby": "世界[せかい]平和[へいわ]のために祈[いの]る。",
+    "exampleKana": "せかいへいわのためにいのる。",
+    "exampleViet": "Tôi cầu nguyện cho hòa bình thế giới."
+  },
+  {
+    "id": 155,
+    "type": "vocab",
+    "kanji": "超える",
+    "kana": "こえる",
+    "viet": "vượt quá, vượt qua",
+    "hanViet": "SIÊU",
+    "partOfSpeech": "Động từ (Nhóm 2)",
+    "example": "入場者が100万人を超える。",
+    "exampleRuby": "入場者[にゅうじょうしゃ]が100万[ひゃくまん]人[にん]を超[こ]える。",
+    "exampleKana": "にゅうじょうしゃがひゃくまんにんをこえる。",
+    "exampleViet": "Số người vào cổng vượt quá 1 triệu người."
+  },
+  {
+    "id": 156,
+    "type": "vocab",
+    "kanji": "暮らす",
+    "kana": "くらす",
+    "viet": "sống, sinh sống",
+    "hanViet": "MỘ",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "家族と一緒に暮らしている。",
+    "exampleRuby": "家族[かぞく]と一緒[いっしょ]に暮[く]らしている。",
+    "exampleKana": "かぞくといっしょにくらしている。",
+    "exampleViet": "Tôi đang sống cùng với gia đình."
+  },
+  {
+    "id": 157,
+    "type": "vocab",
+    "kanji": "過ごす",
+    "kana": "すごす",
+    "viet": "trải qua, dành thời gian",
+    "hanViet": "QUÁ",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "休日は、家族と一緒に過ごしたい。",
+    "exampleRuby": "休日[きゅうじつ]は、家族[かぞく]と一緒[いっしょ]に過[す]ごしたい。",
+    "exampleKana": "きゅうじつは、かぞくといっしょにすごしたい。",
+    "exampleViet": "Vào ngày nghỉ, tôi muốn dành thời gian với gia đình."
+  },
+  {
+    "id": 158,
+    "type": "vocab",
+    "kanji": "治る",
+    "kana": "なおる",
+    "viet": "khỏi bệnh, lành lại",
+    "hanViet": "TRỊ",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "なかなか風邪が治らない。",
+    "exampleRuby": "なかなか風邪[かぜ]が治[なお]らない。",
+    "exampleKana": "なかなかかぜがなおらない。",
+    "exampleViet": "Mãi mà không khỏi cảm cúm."
+  },
+  {
+    "id": 159,
+    "type": "vocab",
+    "kanji": "届く",
+    "kana": "とどく",
+    "viet": "đến nơi, được giao tới",
+    "hanViet": "GIỚI",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "海外にいる友達から荷物が届いた。",
+    "exampleRuby": "海外[かいがい]にいる友達[ともだち]から荷物[にもつ]が届[とど]いた。",
+    "exampleKana": "かいがいにいるともだちからにもつがとどいた。",
+    "exampleViet": "Tôi đã nhận được bưu kiện từ người bạn ở nước ngoài."
+  },
+  {
+    "id": 160,
+    "type": "vocab",
+    "kanji": "無理",
+    "kana": "むり",
+    "viet": "quá sức, không thể",
+    "hanViet": "VÔ LÝ",
+    "partOfSpeech": "Tính từ đuôi な",
+    "example": "今日中にこの量の仕事を終わらせるなんて無理な話だ。",
+    "exampleRuby": "今日中[きょうじゅう]にこの量[りょう]の仕事[しごと]を終[お]わらせるなんて無理[むり]な話[はなし]だ。",
+    "exampleKana": "きょうじゅうにこのりょうのしごとをおわらせるなんてむりなはなしだ。",
+    "exampleViet": "Phải hoàn thành hết từng này khối lượng công việc chỉ trong hôm nay là điều không thể."
+  },
+  {
+    "id": 161,
+    "type": "vocab",
+    "kanji": "豊か",
+    "kana": "ゆたか",
+    "viet": "phong phú, dư dả, giàu có",
+    "hanViet": "PHONG",
+    "partOfSpeech": "Tính từ đuôi な",
+    "example": "鈴木さんは音楽に関する知識が豊かだ。",
+    "exampleRuby": "鈴木[すずき]さんは音楽[おんがく]に関[かん]する知識[ちしき]が豊[ゆた]かだ。",
+    "exampleKana": "すずきさんはおんがくにかんするちしきがゆたかだ。",
+    "exampleViet": "Anh Suzuki có kiến thức phong phú về âm nhạc."
+  },
+  {
+    "id": 162,
+    "type": "vocab",
+    "kanji": "悲しい",
+    "kana": "かなしい",
+    "viet": "buồn, đau khổ",
+    "hanViet": "BI",
+    "partOfSpeech": "Tính từ đuôi い",
+    "example": "ペットの犬が死んで、とても悲しい。",
+    "exampleRuby": "ペットの犬[いぬ]が死[し]んで、とても悲[かな]しい。",
+    "exampleKana": "ぺっとのいぬがしんで、とてもかなしい。",
+    "exampleViet": "Tôi rất buồn vì con chó cưng của tôi đã chết."
+  },
+  {
+    "id": 163,
+    "type": "vocab",
+    "kanji": "運ぶ",
+    "kana": "はこぶ",
+    "viet": "vận chuyển",
+    "hanViet": "VẬN",
+    "partOfSpeech": "Động từ (Nhóm 1)",
+    "example": "荷物を運ぶ。",
+    "exampleRuby": "荷物[にもつ]を運[はこ]ぶ。",
+    "exampleKana": "にもつをはこぶ。",
+    "exampleViet": "Vận chuyển hành lý."
+  }
+];
+
 export const LESSON_1_CARDS: Flashcard[] = [
   ...LESSON_1_KANJI_CARDS,
   ...LESSON_1_RELATED_VOCAB_CARDS,
-  ...LESSON_1_BASE_VOCAB_CARDS
+  ...LESSON_1_BASE_VOCAB_CARDS,
+  ...LESSON_1_VOCAB_ADDITIONS
 ];
 
 // Sample Lesson 2 (Communication & Daily Action)
@@ -1055,8 +1334,8 @@ export const LESSON_2_CARDS: Flashcard[] = [
 export const LESSONS: Lesson[] = [
   {
     id: "lesson-1",
-    title: "Lesson 1: Core Kanji & N3 Vocab",
-    description: "Kanji: 回, 因, 困, 恥, 取, 最, 亡, 忘, 望, 忙, 慣, 情 and related vocabulary",
+    title: "Lesson 1",
+    description: "Kanji: 回, 因, 困, 恥, 取, 最, 亡, 忘, 望, 忙, 慣, 情 and 86 essential vocabulary cards",
     level: "N3",
     cards: LESSON_1_CARDS
   },
@@ -1066,7 +1345,8 @@ export const LESSONS: Lesson[] = [
     description: "Kanji: 調, 始 and essential vocabulary",
     level: "N3",
     cards: LESSON_2_CARDS
-  }
+  },
+  
 ];
 
 // Default dataset for backward compatibility
