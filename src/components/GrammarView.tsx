@@ -35,10 +35,20 @@ export const GrammarView: React.FC<GrammarViewProps> = ({
 
   // State to track which words have their Kana revealed on click
   const [revealedWords, setRevealedWords] = useState<Record<string, boolean>>({});
+  // State to track which exercise answers are revealed
+  const [revealedExercises, setRevealedExercises] = useState<Record<string, boolean>>({});
 
   const toggleWordKana = (key: string) => {
     if (isHanVietMode) return;
     setRevealedWords((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const toggleExerciseAnswer = (key: string) => {
+    if (isHanVietMode) return;
+    setRevealedExercises((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
@@ -53,6 +63,7 @@ export const GrammarView: React.FC<GrammarViewProps> = ({
     setScore(0);
     setQuizCompleted(false);
     setRevealedWords({});
+    setRevealedExercises({});
   }, [lessonId]);
 
   // Filtered quiz questions
@@ -267,6 +278,17 @@ export const GrammarView: React.FC<GrammarViewProps> = ({
                   </div>
                 ))}
 
+                {/* Grammar Notes */}
+                {item.notes && item.notes.length > 0 && (
+                  <ul className="grammar-notes-list">
+                    {item.notes.map((note, nIdx) => (
+                      <li key={nIdx} className="grammar-note-item">
+                        {note}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
                 {/* Examples (text "Ví dụ" removed) */}
                 <div className="grammar-examples-section">
                   <div className="grammar-examples-list">
@@ -290,6 +312,50 @@ export const GrammarView: React.FC<GrammarViewProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* Practice Translation Exercises */}
+                {item.exercises && item.exercises.items.length > 0 && (
+                  <div className="grammar-exercises-section">
+                    <div className="grammar-exercises-title">{item.exercises.title}</div>
+                    <div className="grammar-exercises-list">
+                      {item.exercises.items.map((exItem, idx) => {
+                        const exKey = `${item.id}-${idx}`;
+                        const isShown = Boolean(revealedExercises[exKey]);
+                        return (
+                          <div key={idx} className="grammar-exercise-item">
+                            <div className="grammar-exercise-prompt-row">
+                              <span className="grammar-exercise-vi">
+                                {idx + 1}. {exItem.vi}
+                              </span>
+                              <button
+                                type="button"
+                                className={`grammar-exercise-toggle ${isShown ? 'active' : ''}`}
+                                onClick={() => toggleExerciseAnswer(exKey)}
+                              >
+                                {isShown ? 'Ẩn' : 'Đáp án'}
+                              </button>
+                            </div>
+                            {isShown && (
+                              <div className="grammar-exercise-answer">
+                                <div className="jp-sentence">
+                                  {renderRubyTokens(exItem.ruby, exItem.jp, undefined, `ex-ans-${item.id}-${idx}`)}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="grammar-audio-btn"
+                                  onClick={() => onSpeak(exItem.jp, false)}
+                                  title="Phát âm đáp án"
+                                >
+                                  <Volume2 className="w-3.5 h-3.5 text-blue-500" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

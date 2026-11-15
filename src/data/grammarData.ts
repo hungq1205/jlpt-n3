@@ -13,12 +13,25 @@ export interface GrammarExample {
   vi: string;
 }
 
+export interface GrammarExerciseItem {
+  vi: string;
+  jp: string;
+  ruby?: string;
+}
+
+export interface GrammarExercise {
+  title: string;
+  items: GrammarExerciseItem[];
+}
+
 export interface GrammarItem {
   id: number;
   pattern: string;
   meaning: string;
   formulas: FormulaBlock[];
+  notes?: string[];
   examples: GrammarExample[];
+  exercises?: GrammarExercise;
 }
 
 export interface GrammarQuizQuestion {
@@ -512,107 +525,629 @@ export const LESSON_2_GRAMMAR: LessonGrammar = {
   items: [
     {
       id: 1,
-      pattern: "～うちに",
-      meaning: "Trong lúc... (trước khi trạng thái thay đổi)",
+      pattern: "〜って (1)",
+      meaning: "Nhấn mạnh chủ đề (thay cho は trong văn nói)",
       formulas: [
         {
-          labels: [
-            "Trong lúc làm V",
-            "Trong lúc tính từ i",
-            "Trong lúc tính từ na / danh từ"
-          ],
-          stack: [
-            "Vる / Vている / Vない",
-            "Aい",
-            "Aな / Nの"
-          ],
+          labels: ["Đặt ngay sau danh từ làm chủ đề câu"],
+          stack: ["N"],
           operator: "+",
-          fixed: [
-            "うちに",
-            "うちに",
-            "うちに"
-          ]
+          fixed: ["って"]
         }
+      ],
+      notes: [
+        "Đứng ngay sau danh từ (N) đóng vai trò là chủ đề của câu.",
+        "Dùng để thay thế cho trợ từ は nhằm nhấn mạnh chủ đề muốn nói đến.",
+        "Đây là cách nói đặc trưng trong văn nói (hội thoại thân mật)."
       ],
       examples: [
         {
-          jp: "温かいうちに、早く食べてください。",
-          ruby: "温[あたた]かいうちに、早[はや]く食[た]べてください。",
-          highlight: "温かいうちに",
-          vi: "Trong lúc đồ ăn còn nóng, hãy ăn nhanh lên nhé."
+          jp: "あなたの恋人ってどんな人ですか。",
+          ruby: "あなたの恋人[こいびと]ってどんな人[ひと]ですか。",
+          highlight: "恋人って",
+          vi: "Người yêu của bạn là người như thế nào?"
+        },
+        {
+          jp: "日本語ってどうすれば上手になりますか。",
+          ruby: "日本語[にほんご]ってどうすれば上手[じょうず]になりますか。",
+          highlight: "日本語って",
+          vi: "Tiếng Nhật thì làm thế nào để trở nên giỏi hơn?"
+        },
+        {
+          jp: "すみません、会社のパーティーっていつですか。",
+          ruby: "すみません、会社[かいしゃ]のパーティーっていつですか。",
+          highlight: "パーティーって",
+          vi: "Xin lỗi, bữa tiệc của công ty là khi nào vậy ạ?"
         }
-      ]
+      ],
+      exercises: {
+        title: "Dịch những câu sau sang tiếng Nhật",
+        items: [
+          {
+            vi: "Nghe nói núi Phú Sĩ là ngọn núi cao nhất Nhật Bản.",
+            jp: "富士山って日本で一番高い山なんだって。",
+            ruby: "富士山[ふじさん]って日本[にほん]で一番[いちばん]高[たか]い山[やま]なんだって。"
+          },
+          {
+            vi: "Tiếng Nhật có khó không?",
+            jp: "日本語って難しいですか。",
+            ruby: "日本語[にほんご]って難[むずか]しいですか。"
+          },
+          {
+            vi: "Nhật Bản là nước như thế nào?",
+            jp: "日本ってどんな国ですか。",
+            ruby: "日本[にほん]ってどんな国[くに]ですか。"
+          }
+        ]
+      }
     },
     {
       id: 2,
-      pattern: "～あいだに",
-      meaning: "Trong khoảng thời gian... (hành động ngắn diễn ra)",
+      pattern: "〜って (2)",
+      meaning: "Nghe nói là... / Thấy bảo là...",
       formulas: [
         {
           labels: [
-            "Trong lúc hành động kéo dài",
-            "Trong lúc danh từ chỉ thời gian"
+            "Động từ thể thường",
+            "Tính từ đuôi い",
+            "Danh từ / Tính từ đuôi な"
           ],
           stack: [
-            "Vている",
-            "Nの"
+            "V (普) (+んだ)",
+            "Aい (+んだ)",
+            "N / Aな (+なん) だ"
           ],
           operator: "+",
           fixed: [
-            "あいだに",
-            "あいだに"
+            "って",
+            "って",
+            "って"
           ]
         }
       ],
+      notes: [
+        "Mẫu câu dùng để trích dẫn lại lời người khác, thông tin nghe từ nơi khác.",
+        "Cách nói thường nghe khác: なんだって。"
+      ],
       examples: [
         {
-          jp: "留守のあいだに、泥棒が入った。",
-          ruby: "留守[るす]のあいだに、泥棒[どろぼう]が入[はい]った。",
-          highlight: "留守のあいだに",
-          vi: "Trong lúc vắng nhà, trộm đã đột nhập vào."
+          jp: "今週はずっと晴れだって。",
+          ruby: "今週[こんしゅう]はずっと晴[は]れだって。",
+          highlight: "晴れだって",
+          vi: "Nghe nói tuần này trời nắng suốt đấy."
+        },
+        {
+          jp: "彼は今日、遅刻して先生におこられたって。",
+          ruby: "彼[かれ]は今日[きょう]、遅刻[ちこく]して先生[せんせい]におこられたって。",
+          highlight: "おこられたって",
+          vi: "Thấy bảo hôm nay anh ấy đi muộn nên bị thầy mắng đấy."
+        },
+        {
+          jp: "その荷物は小さいけど結構重いって。",
+          ruby: "その荷物[にもつ]は小[ちい]さいけど結構[けっこう]重[おも]いって。",
+          highlight: "重いって",
+          vi: "Nghe nói hành lý đó tuy nhỏ nhưng khá nặng đấy."
+        },
+        {
+          jp: "これは昔のアニメだけど、海外では今でも人気なんだって。",
+          ruby: "これは昔[むかし]のアニメだけど、海外[かいがい]では今[いま]でも人気[にんき]なんだって。",
+          highlight: "人気なんだって",
+          vi: "Đây là anime ngày xưa nhưng nghe nói ở nước ngoài bây giờ vẫn rất nổi tiếng đấy."
         }
-      ]
+      ],
+      exercises: {
+        title: "Dịch những câu sau sang tiếng Nhật",
+        items: [
+          {
+            vi: "Thấy bảo hai người đấy đang hẹn hò với nhau.",
+            jp: "あの二人は付き合っているんだって。",
+            ruby: "あの二人[ふたり]は付[つ]き合[あ]っているんだって。"
+          },
+          {
+            vi: "Nghe nói cô Thanh có em bé rồi.",
+            jp: "タインさんは赤ちゃんができたんだって。",
+            ruby: "タインさんは赤[あか]ちゃんができたんだって。"
+          },
+          {
+            vi: "Nghe nói cô ấy đỗ N3 rồi.",
+            jp: "彼女はN3に合格したんだって。",
+            ruby: "彼女[かのじょ]はN3に合格[ごうかく]したんだって。"
+          }
+        ]
+      }
+    },
+    {
+      id: 3,
+      pattern: "〜って (3)",
+      meaning: "Là... (trích dẫn lời nói / suy nghĩ / chữ viết)",
+      formulas: [
+        {
+          labels: ["Dùng thay cho trợ từ と (と思う / と言う / と書いてある)"],
+          stack: ["Mệnh đề (thể ngắn)"],
+          operator: "+",
+          fixed: ["って"]
+        }
+      ],
+      notes: [
+        "Mẫu câu dùng thay cho と trong: と思う / と言う / と書いてある (nghĩ là / nói là / viết là ~).",
+        "Với câu hỏi: dùng 何て, không dùng 何って。"
+      ],
+      examples: [
+        {
+          jp: "彼と初めて話したけど、いい人だなって思った。",
+          ruby: "彼[かれ]と初[はじ]めて話[はな]したけど、いい人[ひと]だなって思[おも]った。",
+          highlight: "いい人だなって思った",
+          vi: "Lần đầu tiên nói chuyện với anh ấy, tôi đã nghĩ anh ấy là người tốt."
+        },
+        {
+          jp: "彼は来月から日本に留学するってみんなに言っていた。",
+          ruby: "彼[かれ]は来月[らいげつ]から日本[にほん]に留学[りゅうがく]するってみんなに言[い]っていた。",
+          highlight: "留学するって",
+          vi: "Anh ấy đã nói với mọi người rằng từ tháng sau sẽ đi du học Nhật Bản."
+        },
+        {
+          jp: "子供のとき、父にご飯は残さず全部食べろってよく言われた。",
+          ruby: "子供[こども]のとき、父[ちち]にご飯[はん]は残[のこ]さず全部[ぜんぶ]食[た]べろってよく言[い]われた。",
+          highlight: "全部食べろって",
+          vi: "Hồi nhỏ, tôi thường bị bố bảo là cơm phải ăn hết không được để thừa."
+        }
+      ],
+      exercises: {
+        title: "Dịch những câu sau sang tiếng Nhật",
+        items: [
+          {
+            vi: "(Trên tấm biển) Có viết là cấm vào.",
+            jp: "立ち入り禁止って書いてある。",
+            ruby: "立[た]ち入[い]り禁止[きんし]って書[か]いてある。"
+          },
+          {
+            vi: "Tôi đã được khen là \"Con đã làm rất tốt\" đấy!",
+            jp: "「よく頑張ったね」って褒められたよ。",
+            ruby: "「よく頑張[がんば]ったね」って褒[ほ]められたよ。"
+          }
+        ]
+      }
+    },
+    {
+      id: 4,
+      pattern: "〜って (4) / という",
+      meaning: "N2 gọi là N1",
+      formulas: [
+        {
+          labels: ["Giới thiệu hoặc gọi tên sự vật, sự việc cụ thể"],
+          stack: ["N1"],
+          operator: "+",
+          fixed: ["という / って + N2"]
+        }
+      ],
+      notes: [
+        "Mẫu câu dùng để giới thiệu hoặc gọi tên một sự vật, sự việc cụ thể.",
+        "N1 là tên riêng hoặc một danh từ cụ thể.",
+        "N2 là danh từ cùng loại nhưng có phạm vi nghĩa rộng hơn N1.",
+        "Văn nói: っていう / って。"
+      ],
+      examples: [
+        {
+          jp: "私は日本という国から来ました。",
+          ruby: "私[わたし]は日本[にほん]という国[くに]から来[き]ました。",
+          highlight: "日本という国",
+          vi: "Tôi đến từ đất nước gọi là Nhật Bản."
+        },
+        {
+          jp: "これはフォーという料理で、ベトナムではとても有名です。",
+          ruby: "これはフォーという料理[りょうり]で、ベトナムではとても有名[ゆうめい]です。",
+          highlight: "フォーという料理",
+          vi: "Đây là món ăn gọi là Phở, ở Việt Nam rất nổi tiếng."
+        },
+        {
+          jp: "私はズンモリって日本語センターで、N5からN2まで勉強した。",
+          ruby: "私[わたし]はズンモリって日本語[にほんご]センターで、N5からN2まで勉強[べんきょう]した。",
+          highlight: "ズンモリって日本語センター",
+          vi: "Tôi đã học từ N5 đến N2 tại trung tâm tiếng Nhật tên là Dung Mori."
+        }
+      ],
+      exercises: {
+        title: "Dịch những cụm từ sau sang tiếng Nhật",
+        items: [
+          {
+            vi: "Đất nước mang tên là Việt Nam",
+            jp: "ベトナムという国",
+            ruby: "ベトナムという国[くに]"
+          },
+          {
+            vi: "Món ăn mà gọi là sushi",
+            jp: "すしという料理",
+            ruby: "すしという料理[りょうり]"
+          },
+          {
+            vi: "Người mà tên là Thanh",
+            jp: "タインという人",
+            ruby: "タインという人[ひと]"
+          }
+        ]
+      }
+    },
+    {
+      id: 5,
+      pattern: "〜らしい",
+      meaning: "Ra dáng / đậm chất / chuẩn...",
+      formulas: [
+        {
+          labels: [
+            "Mang nét tiêu biểu, điển hình của N",
+            "Kết hợp với danh từ đứng sau"
+          ],
+          stack: [
+            "N",
+            "N1 + らしい"
+          ],
+          operator: "+",
+          fixed: [
+            "らしい",
+            "N2"
+          ]
+        }
+      ],
+      notes: [
+        "Mẫu câu dùng để diễn tả một sự vật, sự việc hoặc đối tượng mang những đặc điểm tiêu biểu, điển hình của chính nó.",
+        "N らしい dùng như 1 tính từ đuôi i.",
+        "Có thể kết hợp được với danh từ đứng sau: 「N1 らしい N2」."
+      ],
+      examples: [
+        {
+          jp: "息子は高校生になり、だんだん大人らしい顔になってきた。",
+          ruby: "息子[むすこ]は高校生[こうこうせい]になり、だんだん大人[おとな]らしい顔[かお]になってきた。",
+          highlight: "大人らしい",
+          vi: "Con trai đã lên cấp 3 nên khuôn mặt dần ra dáng người lớn."
+        },
+        {
+          jp: "あの子は遊ばないで勉強ばかりしていて、子供らしくない。",
+          ruby: "あの子[こ]は遊[あそ]ばないで勉強[べんきょう]ばかりしていて、子供[こども]らしくない。",
+          highlight: "子供らしくない",
+          vi: "Đứa bé đó không chơi đùa mà chỉ học suốt, chẳng giống trẻ con chút nào."
+        }
+      ],
+      exercises: {
+        title: "Dịch những câu sau sang tiếng Nhật",
+        items: [
+          {
+            vi: "Hôm nay là một ngày đúng kiểu mùa hè nhỉ!",
+            jp: "今日は夏らしい日ですね。",
+            ruby: "今日[きょう]は夏[なつ]らしい日[ひ]ですね。"
+          },
+          {
+            vi: "Cô Yuka có khuôn mặt đậm chất người Nhật.",
+            jp: "ユカさんは日本人らしい顔をしている。",
+            ruby: "ユカさんは日本人[にほんじん]らしい顔[かお]をしている。"
+          },
+          {
+            vi: "Nếu không có pháo hoa thì đâu còn là mùa hè nữa.",
+            jp: "花火がないと夏らしくないね。",
+            ruby: "花火[はなび]がないと夏[なつ]らしくないね。"
+          }
+        ]
+      }
+    },
+    {
+      id: 6,
+      pattern: "〜を中心",
+      meaning: "Mà chủ yếu là... / trọng tâm là...",
+      formulas: [
+        {
+          labels: [
+            "Lấy N1 làm trọng tâm / chủ yếu",
+            "Bổ nghĩa cho danh từ N2 (đã / đang lấy N1 làm trọng tâm)",
+            "Bổ nghĩa cho danh từ N2 (lấy N1 làm trọng tâm)"
+          ],
+          stack: [
+            "N1",
+            "N1",
+            "N1"
+          ],
+          operator: "+",
+          fixed: [
+            "を中心に / として",
+            "を中心にした / とした + N2",
+            "を中心にする / とする + N2"
+          ]
+        }
+      ],
+      notes: [
+        "Diễn tả việc lấy N1 làm trung tâm, làm yếu tố chủ yếu hoặc trọng tâm của hành động, sự việc."
+      ],
+      examples: [
+        {
+          jp: "この教室では、会話を中心に勉強している。",
+          ruby: "この教室[きょうしつ]では、会話[かいわ]を中心[ちゅうしん]に勉強[べんきょう]している。",
+          highlight: "会話を中心に",
+          vi: "Ở lớp học này, chúng tôi học tập trung chủ yếu vào hội thoại."
+        },
+        {
+          jp: "文法を中心にした授業はつまらない。",
+          ruby: "文法[ぶんぽう]を中心[ちゅうしん]にした授業[じゅぎょう]はつまらない。",
+          highlight: "文法を中心にした",
+          vi: "Giờ học lấy ngữ pháp làm trọng tâm thì thật nhàm chán."
+        },
+        {
+          jp: "食事を中心としたダイエットをしている。",
+          ruby: "食事[しょくじ]を中心[ちゅうしん]としたダイエットをしている。",
+          highlight: "食事を中心とした",
+          vi: "Tôi đang thực hiện chế độ ăn kiêng lấy ăn uống làm trọng tâm."
+        }
+      ],
+      exercises: {
+        title: "Dịch những câu sau sang tiếng Nhật",
+        items: [
+          {
+            vi: "Cuốn sách này giải thích lấy ví dụ làm trọng tâm.",
+            jp: "この本は例文を中心に説明している。",
+            ruby: "この本[ほん]は例文[れいぶん]を中心[ちゅうしん]に説明[せつめい]している。"
+          },
+          {
+            vi: "Tháng này chúng tôi tổ chức sự kiện chủ yếu dành cho học sinh.",
+            jp: "今月は学生を中心としたイベントを行う。",
+            ruby: "今月[こんげつ]は学生[がくせい]を中心[ちゅうしん]としたイベントを行[おこな]う。"
+          },
+          {
+            vi: "Hãy luyện tập tập trung vào phần phát âm.",
+            jp: "発音を中心に練習しましょう。",
+            ruby: "発音[はつおん]を中心[ちゅうしん]に練習[れんしゅう]しましょう。"
+          }
+        ]
+      }
     }
   ],
   quiz: [
     {
       id: "l2-q1",
       grammarId: 1,
-      grammarPattern: "～うちに",
+      grammarPattern: "〜って (1)",
       direction: "jp-to-vi",
-      question: "温かいうちに、早く食べてください。",
-      questionRuby: "温[あたた]かいうちに、早[はや]く食[た]べてください。",
-      audioText: "温かいうちに、早く食べてください。",
+      question: "あなたの恋人ってどんな人ですか。",
+      questionRuby: "あなたの恋人[こいびと]ってどんな人[ひと]ですか。",
+      audioText: "あなたの恋人ってどんな人ですか。",
       options: [
-        "Trong lúc đồ ăn còn nóng, hãy ăn nhanh lên nhé.",
-        "Vì vừa mới nấu xong nên hãy ăn nhanh lên nhé.",
-        "Càng nóng thì ăn càng thấy ngon hơn.",
-        "Nếu đồ ăn không nóng thì đừng ăn nhé."
+        "Người yêu của bạn là người như thế nào?",
+        "Nghe nói bạn đã có người yêu rồi phải không?",
+        "Người yêu của bạn rất ra dáng người lớn.",
+        "Bạn có nghĩ người yêu của mình là người tốt không?"
       ],
       correctIndex: 0,
-      explanation: "「～うちに」: Làm điều gì đó trong khi trạng thái hiện tại còn tiếp diễn."
+      explanation: "「N + って」thay cho trợ từ は trong văn nói thân mật để nêu chủ đề câu."
     },
     {
       id: "l2-q2",
       grammarId: 2,
-      grammarPattern: "～あいだに",
-      direction: "vi-to-jp",
-      question: "Trong lúc vắng nhà, trộm đã đột nhập vào.",
-      audioText: "留守のあいだに、泥棒が入った。",
+      grammarPattern: "〜って (2)",
+      direction: "jp-to-vi",
+      question: "今週はずっと晴れだって。",
+      questionRuby: "今週[こんしゅう]はずっと晴[は]れだって。",
+      audioText: "今週はずっと晴れだって。",
       options: [
-        "留守のうちに、泥棒が入った。",
-        "留守のあいだに、泥棒が入った。",
-        "留守にしたばかりで、泥棒が入った。",
-        "留守であればあるほど、泥棒が入った。"
-      ],
-      optionsRuby: [
-        "留守[るす]のうちに、泥棒[どろぼう]が入[はい]った。",
-        "留守[るす]のあいだに、泥棒[どろぼう]が入[はい]った。",
-        "留守[るす]にしたばかりで、泥棒[どろぼう]が入[はい]った。",
-        "留守[るす]であればあるほど、泥棒[どろぼう]が入[はい]った。"
+        "Tuần này chắc chắn trời sẽ nắng đẹp.",
+        "Nghe nói tuần này trời nắng suốt đấy.",
+        "Tuần này có thời tiết đúng chất mùa hè.",
+        "Mọi người đang nói về thời tiết tuần này."
       ],
       correctIndex: 1,
-      explanation: "Trong khoảng thời gian vắng nhà có hành động trộm xen vào ->「Nのあいだに」."
+      explanation: "「N / Aな + だ + って」diễn tả thông tin nghe lại từ người khác (Nghe nói là...)."
+    },
+    {
+      id: "l2-q3",
+      grammarId: 2,
+      grammarPattern: "〜って (2)",
+      direction: "jp-to-vi",
+      question: "これは昔のアニメだけど、海外では今でも人気なんだって。",
+      questionRuby: "これは昔[むかし]のアニメだけど、海外[かいがい]では今[いま]でも人気[にんき]なんだって。",
+      audioText: "これは昔のアニメだけど、海外では今でも人気なんだって。",
+      options: [
+        "Đây là anime cũ nên ở nước ngoài chẳng ai xem nữa.",
+        "Anime này lấy văn hóa nước ngoài làm trọng tâm.",
+        "Đây là anime ngày xưa nhưng nghe nói ở nước ngoài bây giờ vẫn rất nổi tiếng đấy.",
+        "Tôi nghĩ bộ anime này rất đậm chất Nhật Bản."
+      ],
+      correctIndex: 2,
+      explanation: "「N / Aな + なんだって」dùng để truyền đạt lại điều mình nghe được."
+    },
+    {
+      id: "l2-q4",
+      grammarId: 3,
+      grammarPattern: "〜って (3)",
+      direction: "jp-to-vi",
+      question: "彼は来月から日本に留学するってみんなに言っていた。",
+      questionRuby: "彼[かれ]は来月[らいげつ]から日本[にほん]に留学[りゅうがく]するってみんなに言[い]っていた。",
+      audioText: "彼は来月から日本に留学するってみんなに言っていた。",
+      options: [
+        "Nghe nói mọi người đều khuyên anh ấy sang Nhật du học.",
+        "Việc đi du học Nhật tháng sau đúng là phong cách của anh ấy.",
+        "Anh ấy đang tập trung học tiếng Nhật để chuẩn bị du học.",
+        "Anh ấy đã nói với mọi người rằng từ tháng sau sẽ đi du học Nhật Bản."
+      ],
+      correctIndex: 3,
+      explanation: "「Mệnh đề + って言う」thay cho 「～と言う」trong văn nói (nói rằng...)."
+    },
+    {
+      id: "l2-q5",
+      grammarId: 4,
+      grammarPattern: "〜って (4) / という",
+      direction: "jp-to-vi",
+      question: "これはフォーという料理で、ベトナムではとても有名です。",
+      questionRuby: "これはフォーという料理[りょうり]で、ベトナムではとても有名[ゆうめい]です。",
+      audioText: "これはフォーという料理で、ベトナムではとても有名です。",
+      options: [
+        "Đây là món ăn gọi là Phở, ở Việt Nam rất nổi tiếng.",
+        "Nghe nói món Phở ở Việt Nam rất khó nấu.",
+        "Món Phở này được nấu lấy thịt bò làm trọng tâm.",
+        "Món ăn này mang hương vị đậm chất Việt Nam."
+      ],
+      correctIndex: 0,
+      explanation: "「N1 + という + N2」dùng để giới thiệu hoặc gọi tên sự vật cụ thể (N2 gọi là N1)."
+    },
+    {
+      id: "l2-q6",
+      grammarId: 5,
+      grammarPattern: "〜らしい",
+      direction: "jp-to-vi",
+      question: "息子は高校生になり、だんだん大人らしい顔になってきた。",
+      questionRuby: "息子[むすこ]は高校生[こうこうせい]になり、だんだん大人[おとな]らしい顔[かお]になってきた。",
+      audioText: "息子は高校生になり、だんだん大人らしい顔になってきた。",
+      options: [
+        "Nghe nói con trai tôi sắp lên cấp 3 như người lớn.",
+        "Con trai đã lên cấp 3 nên khuôn mặt dần ra dáng người lớn.",
+        "Con trai tôi nói với người lớn rằng mình đã lên cấp 3.",
+        "Ở trường cấp 3, con trai tôi học tập trung vào môn này."
+      ],
+      correctIndex: 1,
+      explanation: "「N + らしい」diễn tả tính chất điển hình, ra dáng hoặc đậm chất của danh từ đó."
+    },
+    {
+      id: "l2-q7",
+      grammarId: 6,
+      grammarPattern: "〜を中心",
+      direction: "jp-to-vi",
+      question: "この教室では、会話を中心に勉強している。",
+      questionRuby: "この教室[きょうしつ]では、会話[かいわ]を中心[ちゅうしん]に勉強[べんきょう]している。",
+      audioText: "この教室では、会話を中心に勉強している。",
+      options: [
+        "Nghe nói lớp học này chỉ toàn học viên giỏi hội thoại.",
+        "Hội thoại ở lớp học này rất giống cách nói của người bản xứ.",
+        "Ở lớp học này, chúng tôi học tập trung chủ yếu vào hội thoại.",
+        "Lớp học này có tên là lớp hội thoại."
+      ],
+      correctIndex: 2,
+      explanation: "「Nを中心に」diễn tả việc lấy N làm trung tâm, chủ yếu hoặc trọng tâm."
+    },
+    {
+      id: "l2-q8",
+      grammarId: 1,
+      grammarPattern: "〜って (1)",
+      direction: "vi-to-jp",
+      question: "Tiếng Nhật thì làm thế nào để trở nên giỏi hơn?",
+      audioText: "日本語ってどうすれば上手になりますか。",
+      options: [
+        "日本語ってどうすれば上手になりますか。",
+        "日本語らしいどうすれば上手になりますか。",
+        "日本語を中心にどうすれば上手になりますか。",
+        "日本語という国はどうすれば上手になりますか。"
+      ],
+      optionsRuby: [
+        "日本語[にほんご]ってどうすれば上手[じょうず]になりますか。",
+        "日本語[にほんご]らしいどうすれば上手[じょうず]になりますか。",
+        "日本語[にほんご]を中心[ちゅうしん]にどうすれば上手[じょうず]になりますか。",
+        "日本語[にほんご]という国[くに]はどうすれば上手[じょうず]になりますか。"
+      ],
+      correctIndex: 0,
+      explanation: "「N + って」đặt sau danh từ để nêu chủ đề câu trong hội thoại thân mật."
+    },
+    {
+      id: "l2-q9",
+      grammarId: 2,
+      grammarPattern: "〜って (2)",
+      direction: "vi-to-jp",
+      question: "Thấy bảo hôm nay anh ấy đi muộn nên bị thầy mắng đấy.",
+      audioText: "彼は今日、遅刻して先生におこられたって。",
+      options: [
+        "彼は今日、遅刻して先生におこられたらしい顔だ。",
+        "彼は今日、遅刻して先生におこられたって。",
+        "彼は今日、遅刻したという先生におこられた。",
+        "彼は今日、遅刻を中心に先生におこられた。"
+      ],
+      optionsRuby: [
+        "彼[かれ]は今日[きょう]、遅刻[ちこく]して先生[せんせい]におこられたらしい顔[かお]だ。",
+        "彼[かれ]は今日[きょう]、遅刻[ちこく]して先生[せんせい]におこられたって。",
+        "彼[かれ]は今日[きょう]、遅刻[ちこく]したという先生[せんせい]におこられた。",
+        "彼[かれ]は今日[きょう]、遅刻[ちこく]を中心[ちゅうしん]に先生[せんせい]におこられた。"
+      ],
+      correctIndex: 1,
+      explanation: "Trích dẫn thông tin nghe được ở cuối câu văn nói:「V(普) + って」."
+    },
+    {
+      id: "l2-q10",
+      grammarId: 3,
+      grammarPattern: "〜って (3)",
+      direction: "vi-to-jp",
+      question: "Lần đầu tiên nói chuyện với anh ấy, tôi đã nghĩ anh ấy là người tốt.",
+      audioText: "彼と初めて話したけど、いい人だなって思った。",
+      options: [
+        "彼と初めて話したけど、いい人を中心にしたと思った。",
+        "彼と初めて話したけど、いい人らしいと思った。",
+        "彼と初めて話したけど、いい人だなって思った。",
+        "彼と初めて話したけど、いい人という名前だと思った。"
+      ],
+      optionsRuby: [
+        "彼[かれ]と初[はじ]めて話[はな]したけど、いい人[ひと]を中心[ちゅうしん]にしたと思[おも]った。",
+        "彼[かれ]と初[はじ]めて話[はな]したけど、いい人[ひと]らしいと思[おも]った。",
+        "彼[かれ]と初[はじ]めて話[はな]したけど、いい人[ひと]だなって思[おも]った。",
+        "彼[かれ]と初[はじ]めて話[はな]したけど、いい人[ひと]という名前[なまえ]だと思[おも]った。"
+      ],
+      correctIndex: 2,
+      explanation: "「Mệnh đề (thể ngắn) + って思う」thay cho 「～と思う」trong văn nói."
+    },
+    {
+      id: "l2-q11",
+      grammarId: 4,
+      grammarPattern: "〜って (4) / という",
+      direction: "vi-to-jp",
+      question: "Tôi đến từ đất nước gọi là Nhật Bản.",
+      audioText: "私は日本という国から来ました。",
+      options: [
+        "私は日本らしい国から来ました。",
+        "私は日本を中心に国から来ました。",
+        "私は日本だって国から来ました。",
+        "私は日本という国から来ました。"
+      ],
+      optionsRuby: [
+        "私[わたし]は日本[にほん]らしい国[くに]から来[き]ました。",
+        "私[わたし]は日本[にほん]を中心[ちゅうしん]に国[くに]から来[き]ました。",
+        "私[わたし]は日本[にほん]だって国[くに]から来[き]ました。",
+        "私[わたし]は日本[にほん]という国[くに]から来[き]ました。"
+      ],
+      correctIndex: 3,
+      explanation: "Giới thiệu tên riêng đứng trước danh từ loại rộng hơn ->「N1 + という + N2」."
+    },
+    {
+      id: "l2-q12",
+      grammarId: 5,
+      grammarPattern: "〜らしい",
+      direction: "vi-to-jp",
+      question: "Hôm nay là một ngày đúng kiểu mùa hè nhỉ!",
+      audioText: "今日は夏らしい日ですね。",
+      options: [
+        "今日は夏らしい日ですね。",
+        "今日は夏という日ですね。",
+        "今日は夏を中心に日ですね。",
+        "今日は夏だって日ですね。"
+      ],
+      optionsRuby: [
+        "今日[きょう]は夏[なつ]らしい日[ひ]ですね。",
+        "今日[きょう]は夏[なつ]という日[ひ]ですね。",
+        "今日[きょう]は夏[なつ]を中心[ちゅうしん]に日[ひ]ですね。",
+        "今日[きょう]は夏[なつ]だって日[ひ]ですね。"
+      ],
+      correctIndex: 0,
+      explanation: "Mang đặc điểm tiêu biểu của mùa hè ->「N1 + らしい + N2」."
+    },
+    {
+      id: "l2-q13",
+      grammarId: 6,
+      grammarPattern: "〜を中心",
+      direction: "vi-to-jp",
+      question: "Tôi đang thực hiện chế độ ăn kiêng lấy ăn uống làm trọng tâm.",
+      audioText: "食事を中心としたダイエットをしている。",
+      options: [
+        "食事ってダイエットをしている。",
+        "食事を中心としたダイエットをしている。",
+        "食事らしいダイエットをしている。",
+        "食事というダイエットをしている。"
+      ],
+      optionsRuby: [
+        "食事[しょくじ]ってダイエットをしている。",
+        "食事[しょくじ]を中心[ちゅうしん]としたダイエットをしている。",
+        "食事[しょくじ]らしいダイエットをしている。",
+        "食事[しょくじ]というダイエットをしている。"
+      ],
+      correctIndex: 1,
+      explanation: "Bổ nghĩa cho danh từ phía sau với nghĩa lấy N1 làm trọng tâm ->「N1 + を中心とした + N2」."
     }
   ]
 };

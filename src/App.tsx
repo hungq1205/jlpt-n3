@@ -33,6 +33,15 @@ export default function App() {
     const saved = localStorage.getItem('kanji_auto_read');
     return saved !== null ? saved === 'true' : true;
   });
+  const [autoNextEnabled, setAutoNextEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('kanji_auto_next');
+    return saved !== null ? saved === 'true' : false;
+  });
+  const [autoNextInterval, setAutoNextInterval] = useState<number>(() => {
+    const saved = localStorage.getItem('kanji_auto_next_interval');
+    const parsed = saved !== null ? parseFloat(saved) : 3;
+    return !Number.isNaN(parsed) && parsed >= 1 ? parsed : 3;
+  });
   const [hanVietSensitivity, setHanVietSensitivity] = useState<number>(() => {
     const saved = localStorage.getItem('kanji_hv_sensitivity');
     return saved !== null ? parseInt(saved, 10) : 70;
@@ -54,6 +63,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('kanji_auto_read', autoReadEnabled.toString());
   }, [autoReadEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('kanji_auto_next', autoNextEnabled.toString());
+  }, [autoNextEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('kanji_auto_next_interval', autoNextInterval.toString());
+  }, [autoNextInterval]);
 
   useEffect(() => {
     localStorage.setItem('kanji_hv_sensitivity', hanVietSensitivity.toString());
@@ -220,6 +237,39 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [pos, selectedLessonId, autoReadEnabled, activeView, currentCard, readCurrentCardFront]);
+
+  // Auto-next flashcard timer
+  useEffect(() => {
+    if (
+      !autoNextEnabled ||
+      activeView !== 'flashcard' ||
+      isHanVietMode ||
+      isDragging ||
+      showKana ||
+      order.length <= 1
+    ) {
+      return;
+    }
+
+    const delayMs = Math.max(1000, Math.round(autoNextInterval * 1000));
+    const timer = window.setTimeout(() => {
+      handleNext();
+    }, delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    autoNextEnabled,
+    autoNextInterval,
+    activeView,
+    isHanVietMode,
+    isDragging,
+    showKana,
+    pos,
+    flipped,
+    selectedLessonId,
+    order.length,
+    handleNext,
+  ]);
 
   // Audio trigger helper with volume
   const playAudio = useCallback((e: React.MouseEvent | React.TouchEvent, text: string, isVn = false) => {
@@ -464,22 +514,66 @@ export default function App() {
     };
   }, [isHanVietMode, findNearestKanji, hanVietSensitivity]);
 
-  // Compute resting coordinates for draggable FABs
+  const isPcView = winSize.w >= 768;
+  const isPcFlashcardView = isPcView && activeView === 'flashcard';
+  const fabSize = winSize.w >= 640 ? 54 : 50;
+  const fabHalf = fabSize / 2;
+
+  const [pcCardBounds, setPcCardBounds] = useState<{ top: number; right: number; height: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!isPcFlashcardView) {
+      setPcCardBounds(null);
+      return;
+    }
+    const measureCard = () => {
+      const el = cardWrapRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        setPcCardBounds({ top: r.top, right: r.right, height: r.height });
+      }
+    };
+    measureCard();
+    const rafId = window.requestAnimationFrame(measureCard);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isPcFlashcardView, winSize.w, winSize.h, selectedLessonId]);
+
+  // Compute resting coordinates for FABs (side-anchored beside vertical card on PC, corner-snapped on mobile)
   const snapCoords = useMemo(() => {
+    if (isPcFlashcardView) {
+      const cardH = pcCardBounds?.height ?? Math.min(620, Math.max(260, winSize.h - 160));
+      const cardW = Math.min(410, cardH * 0.68, Math.max(240, winSize.w - 168));
+      const cardRight = pcCardBounds?.right ?? (winSize.w + cardW) / 2;
+      const cardTop = pcCardBounds?.top ?? Math.max(62, (winSize.h - 74 - cardH) / 2 + 24);
+      const sideGap = 16;
+      const btnGap = 14;
+      const totalStackH = 3 * fabSize + 2 * btnGap;
+      const x = Math.min(winSize.w - fabSize - 16, cardRight + sideGap);
+      const startY = Math.max(62, cardTop + (cardH - totalStackH) / 2);
+
+      return {
+        kana: { x, y: startY },
+        hanViet: { x, y: startY + fabSize + btnGap },
+        read: { x, y: startY + 2 * (fabSize + btnGap) },
+      };
+    }
+
     return getSnapCoords(
       snapKana,
       snapHanViet,
       activeView === 'flashcard' ? snapRead : undefined,
       winSize.w,
-      winSize.h
+      winSize.h,
+      fabSize
     );
-  }, [snapKana, snapHanViet, snapRead, activeView, winSize.w, winSize.h]);
+  }, [isPcFlashcardView, pcCardBounds, fabSize, snapKana, snapHanViet, snapRead, activeView, winSize.w, winSize.h]);
 
-  // Compute predicted release snap destination while dragging
+  // Compute predicted release snap destination while dragging (mobile only)
   const targetSnapCoords = useMemo(() => {
-    if (!isDragging || !dragBtn || !dragPos) return null;
-    const currentCenterX = dragPos.x + 25;
-    const currentCenterY = dragPos.y + 25;
+    if (isPcFlashcardView || !isDragging || !dragBtn || !dragPos) return null;
+    const currentCenterX = dragPos.x + fabHalf;
+    const currentCenterY = dragPos.y + fabHalf;
     const matchedSnap = findSnapPositionWithinRange(
       currentCenterX,
       currentCenterY,
@@ -498,12 +592,13 @@ export default function App() {
       dragBtn === 'hanviet' ? matchedSnap : snapHanViet,
       activeView === 'flashcard' ? (dragBtn === 'read' ? matchedSnap : snapRead) : undefined,
       winSize.w,
-      winSize.h
+      winSize.h,
+      fabSize
     );
     const targetPt = dragBtn === 'kana' ? coords.kana : dragBtn === 'hanviet' ? coords.hanViet : coords.read;
     if (!targetPt) return null;
-    return { x: targetPt.x + 25, y: targetPt.y + 25 };
-  }, [isDragging, dragBtn, dragPos, snapKana, snapHanViet, snapRead, activeView, winSize.w, winSize.h]);
+    return { x: targetPt.x + fabHalf, y: targetPt.y + fabHalf };
+  }, [isPcFlashcardView, isDragging, dragBtn, dragPos, fabHalf, fabSize, snapKana, snapHanViet, snapRead, activeView, winSize.w, winSize.h]);
 
   // Sync kana class with body
   useEffect(() => {
@@ -1328,7 +1423,51 @@ export default function App() {
                 <span className="setting-toggle-slider"></span>
               </label>
             </div>
+          </div>
 
+          {/* Section 4: Auto Next Flashcard */}
+          <div className="setting-section">
+            <div className="setting-row">
+              <div className="setting-title">
+                <span>Auto next flashcard</span>
+              </div>
+              <label className="setting-toggle">
+                <input
+                  type="checkbox"
+                  checked={autoNextEnabled}
+                  onChange={(e) => setAutoNextEnabled(e.target.checked)}
+                />
+                <span className="setting-toggle-slider"></span>
+              </label>
+            </div>
+            <div className="setting-row" style={{ opacity: autoNextEnabled ? 1 : 0.65 }}>
+              <label htmlFor="autoNextIntervalInput" className="setting-desc" style={{ marginTop: 0 }}>
+                Delay before next card
+              </label>
+              <div className="setting-number-group">
+                <input
+                  id="autoNextIntervalInput"
+                  type="number"
+                  min={1}
+                  max={120}
+                  step={1}
+                  value={autoNextInterval}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!Number.isNaN(val)) {
+                      setAutoNextInterval(Math.max(1, Math.min(120, val)));
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!autoNextInterval || autoNextInterval < 1) {
+                      setAutoNextInterval(3);
+                    }
+                  }}
+                  className="setting-number-input"
+                />
+                <span className="setting-unit-label">s</span>
+              </div>
+            </div>
           </div>
 
           {/* Section 4: Han-Viet Reveal Sensitivity Slider */}
@@ -1452,11 +1591,12 @@ export default function App() {
       <button
         className={`fab fab-kana ${isFabPressed || showKana ? 'pressed' : ''} ${isDragging && dragBtn === 'kana' ? 'is-dragging' : ''}`}
         id="kanaHoldBtn"
-        title="Kana: Giữ để hiển thị / Kéo để chuyển vị trí"
+        title={isPcFlashcardView ? 'Kana: Giữ để hiển thị' : 'Kana: Giữ để hiển thị / Kéo để chuyển vị trí'}
         style={{
           left: `${dragBtn === 'kana' && dragPos ? dragPos.x : snapCoords.kana.x}px`,
           top: `${dragBtn === 'kana' && dragPos ? dragPos.y : snapCoords.kana.y}px`,
           opacity: restingFabOpacity,
+          cursor: isPcFlashcardView ? 'pointer' : undefined,
           transition: dragBtn === 'kana' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
         }}
         onPointerDown={(e) => {
@@ -1467,13 +1607,13 @@ export default function App() {
           const now = performance.now();
           dragStartRef.current = { x: e.clientX, y: e.clientY, time: now, moved: false, swipeStartTime: 0 };
           pointerHistoryRef.current = [{ x: e.clientX, y: e.clientY, time: now }];
-          setDragOrigin({ x: snapCoords.kana.x + 25, y: snapCoords.kana.y + 25 });
+          setDragOrigin({ x: snapCoords.kana.x + fabHalf, y: snapCoords.kana.y + fabHalf });
           setDragBtn('kana');
           setIsDragging(false);
           startReveal();
         }}
         onPointerMove={(e) => {
-          if (dragBtn !== 'kana') return;
+          if (dragBtn !== 'kana' || isPcFlashcardView) return;
           const now = performance.now();
           pointerHistoryRef.current.push({ x: e.clientX, y: e.clientY, time: now });
           while (pointerHistoryRef.current.length > 2 && now - pointerHistoryRef.current[0].time > 140) {
@@ -1488,7 +1628,7 @@ export default function App() {
           if (dist >= 10 && !dragStartRef.current.swipeStartTime) {
             dragStartRef.current.swipeStartTime = now;
           }
-          setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
+          setDragPos({ x: e.clientX - fabHalf, y: e.clientY - fabHalf });
         }}
         onPointerUp={(e) => {
           e.preventDefault();
@@ -1497,41 +1637,43 @@ export default function App() {
           } catch (err) {}
           stopReveal();
 
-          const now = performance.now();
-          const totalDx = e.clientX - dragStartRef.current.x;
-          const totalDy = e.clientY - dragStartRef.current.y;
-          const totalDist = Math.hypot(totalDx, totalDy);
+          if (!isPcFlashcardView) {
+            const now = performance.now();
+            const totalDx = e.clientX - dragStartRef.current.x;
+            const totalDy = e.clientY - dragStartRef.current.y;
+            const totalDist = Math.hypot(totalDx, totalDy);
 
-          const swipeDuration = dragStartRef.current.swipeStartTime
-            ? (now - dragStartRef.current.swipeStartTime)
-            : (now - dragStartRef.current.time);
-          const totalDuration = now - dragStartRef.current.time;
+            const swipeDuration = dragStartRef.current.swipeStartTime
+              ? (now - dragStartRef.current.swipeStartTime)
+              : (now - dragStartRef.current.time);
+            const totalDuration = now - dragStartRef.current.time;
 
-          const history = pointerHistoryRef.current;
-          const recentPt = history.find((p) => now - p.time <= 100);
-          const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
+            const history = pointerHistoryRef.current;
+            const recentPt = history.find((p) => now - p.time <= 100);
+            const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
 
-          const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
+            const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
 
-          if (isQuickSwipe) {
-            const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
-            const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
-            const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
-            const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
-            const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapKana);
-            setSnapKana(targetCorner);
-          } else if (dragStartRef.current.moved) {
-            const newSnap = findSnapPositionWithinRange(
-              e.clientX,
-              e.clientY,
-              winSize.w,
-              winSize.h,
-              'kana',
-              { kana: snapKana, hanViet: snapHanViet, read: activeView === 'flashcard' ? snapRead : undefined },
-              SNAP_RANGE
-            );
-            if (newSnap) {
-              setSnapKana(newSnap);
+            if (isQuickSwipe) {
+              const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
+              const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
+              const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
+              const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
+              const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapKana);
+              setSnapKana(targetCorner);
+            } else if (dragStartRef.current.moved) {
+              const newSnap = findSnapPositionWithinRange(
+                e.clientX,
+                e.clientY,
+                winSize.w,
+                winSize.h,
+                'kana',
+                { kana: snapKana, hanViet: snapHanViet, read: activeView === 'flashcard' ? snapRead : undefined },
+                SNAP_RANGE
+              );
+              if (newSnap) {
+                setSnapKana(newSnap);
+              }
             }
           }
 
@@ -1557,11 +1699,12 @@ export default function App() {
       <button
         className={`fab fab-hanviet ${isHanVietMode ? 'active-mode' : ''} ${isDragging && dragBtn === 'hanviet' ? 'is-dragging' : ''}`}
         id="hanvietInspectBtn"
-        title="Hán-Việt: Chạm để bật chế độ tra từ / Kéo để chuyển vị trí"
+        title={isPcFlashcardView ? 'Hán-Việt: Chạm để bật chế độ tra từ / Kéo để soi từ' : 'Hán-Việt: Chạm để bật chế độ tra từ / Kéo để chuyển vị trí'}
         style={{
           left: `${dragBtn === 'hanviet' && dragPos ? dragPos.x : snapCoords.hanViet.x}px`,
           top: `${dragBtn === 'hanviet' && dragPos ? dragPos.y : snapCoords.hanViet.y}px`,
           opacity: restingFabOpacity,
+          cursor: isPcFlashcardView ? 'pointer' : undefined,
           transition: dragBtn === 'hanviet' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
         }}
         onPointerDown={(e) => {
@@ -1572,7 +1715,7 @@ export default function App() {
           const now = performance.now();
           dragStartRef.current = { x: e.clientX, y: e.clientY, time: now, moved: false, swipeStartTime: 0 };
           pointerHistoryRef.current = [{ x: e.clientX, y: e.clientY, time: now }];
-          setDragOrigin({ x: snapCoords.hanViet.x + 25, y: snapCoords.hanViet.y + 25 });
+          setDragOrigin({ x: snapCoords.hanViet.x + fabHalf, y: snapCoords.hanViet.y + fabHalf });
           setDragBtn('hanviet');
           setIsDragging(false);
           setIsProjecting(false);
@@ -1598,18 +1741,23 @@ export default function App() {
             dragStartRef.current.swipeStartTime = now;
           }
 
-          if (dist > 70) {
+          if (!isPcFlashcardView && dist > 70) {
             setIsProjecting(false);
             setProjPoint(null);
             setActiveBubble(null);
-            setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
+            setDragPos({ x: e.clientX - fabHalf, y: e.clientY - fabHalf });
           } else {
-            setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
+            const clampedDx = isPcFlashcardView && dist > 68 ? (dx / dist) * 68 : dx;
+            const clampedDy = isPcFlashcardView && dist > 68 ? (dy / dist) * 68 : dy;
+            setDragPos({
+              x: (isPcFlashcardView ? snapCoords.hanViet.x + clampedDx : e.clientX - fabHalf),
+              y: (isPcFlashcardView ? snapCoords.hanViet.y + clampedDy : e.clientY - fabHalf),
+            });
             setIsProjecting(true);
 
             const factor = Math.max(winSize.w, winSize.h) / 38;
-            const targetX = Math.max(20, Math.min(winSize.w - 20, (snapCoords.hanViet.x + 25) + dx * factor));
-            const targetY = Math.max(30, Math.min(winSize.h - 30, (snapCoords.hanViet.y + 25) + dy * factor));
+            const targetX = Math.max(20, Math.min(winSize.w - 20, (snapCoords.hanViet.x + fabHalf) + clampedDx * factor));
+            const targetY = Math.max(30, Math.min(winSize.h - 30, (snapCoords.hanViet.y + fabHalf) + clampedDy * factor));
             setProjPoint({ x: targetX, y: targetY });
 
             const nearest = findNearestKanji(targetX, targetY, Infinity);
@@ -1624,49 +1772,58 @@ export default function App() {
             (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
           } catch (err) {}
 
-          const now = performance.now();
-          const totalDx = e.clientX - dragStartRef.current.x;
-          const totalDy = e.clientY - dragStartRef.current.y;
-          const totalDist = Math.hypot(totalDx, totalDy);
-
-          const swipeDuration = dragStartRef.current.swipeStartTime
-            ? (now - dragStartRef.current.swipeStartTime)
-            : (now - dragStartRef.current.time);
-          const totalDuration = now - dragStartRef.current.time;
-
-          const history = pointerHistoryRef.current;
-          const recentPt = history.find((p) => now - p.time <= 100);
-          const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
-
-          const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
-
-          if (isQuickSwipe) {
-            setActiveBubble(null);
-            const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
-            const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
-            const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
-            const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
-            const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapHanViet);
-            setSnapHanViet(targetCorner);
-          } else if (totalDist > 70) {
-            setActiveBubble(null);
-            const newSnap = findSnapPositionWithinRange(
-              e.clientX,
-              e.clientY,
-              winSize.w,
-              winSize.h,
-              'hanviet',
-              { kana: snapKana, hanViet: snapHanViet, read: activeView === 'flashcard' ? snapRead : undefined },
-              SNAP_RANGE
-            );
-            if (newSnap) {
-              setSnapHanViet(newSnap);
+          if (isPcFlashcardView) {
+            if (dragStartRef.current.moved) {
+              setActiveBubble(null);
+            } else {
+              setIsHanVietMode((prev) => !prev);
+              setActiveBubble(null);
             }
-          } else if (dragStartRef.current.moved) {
-            setActiveBubble(null);
           } else {
-            setIsHanVietMode((prev) => !prev);
-            setActiveBubble(null);
+            const now = performance.now();
+            const totalDx = e.clientX - dragStartRef.current.x;
+            const totalDy = e.clientY - dragStartRef.current.y;
+            const totalDist = Math.hypot(totalDx, totalDy);
+
+            const swipeDuration = dragStartRef.current.swipeStartTime
+              ? (now - dragStartRef.current.swipeStartTime)
+              : (now - dragStartRef.current.time);
+            const totalDuration = now - dragStartRef.current.time;
+
+            const history = pointerHistoryRef.current;
+            const recentPt = history.find((p) => now - p.time <= 100);
+            const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
+
+            const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
+
+            if (isQuickSwipe) {
+              setActiveBubble(null);
+              const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
+              const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
+              const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
+              const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
+              const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapHanViet);
+              setSnapHanViet(targetCorner);
+            } else if (totalDist > 70) {
+              setActiveBubble(null);
+              const newSnap = findSnapPositionWithinRange(
+                e.clientX,
+                e.clientY,
+                winSize.w,
+                winSize.h,
+                'hanviet',
+                { kana: snapKana, hanViet: snapHanViet, read: activeView === 'flashcard' ? snapRead : undefined },
+                SNAP_RANGE
+              );
+              if (newSnap) {
+                setSnapHanViet(newSnap);
+              }
+            } else if (dragStartRef.current.moved) {
+              setActiveBubble(null);
+            } else {
+              setIsHanVietMode((prev) => !prev);
+              setActiveBubble(null);
+            }
           }
 
           setIsDragging(false);
@@ -1707,6 +1864,7 @@ export default function App() {
             left: `${dragBtn === 'read' && dragPos ? dragPos.x : snapCoords.read.x}px`,
             top: `${dragBtn === 'read' && dragPos ? dragPos.y : snapCoords.read.y}px`,
             opacity: restingFabOpacity,
+            cursor: isPcFlashcardView ? 'pointer' : undefined,
             transition: dragBtn === 'read' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
           }}
           onPointerDown={(e) => {
@@ -1717,12 +1875,12 @@ export default function App() {
             const now = performance.now();
             dragStartRef.current = { x: e.clientX, y: e.clientY, time: now, moved: false, swipeStartTime: 0 };
             pointerHistoryRef.current = [{ x: e.clientX, y: e.clientY, time: now }];
-            setDragOrigin({ x: snapCoords.read.x + 25, y: snapCoords.read.y + 25 });
+            setDragOrigin({ x: snapCoords.read.x + fabHalf, y: snapCoords.read.y + fabHalf });
             setDragBtn('read');
             setIsDragging(false);
           }}
           onPointerMove={(e) => {
-            if (dragBtn !== 'read') return;
+            if (dragBtn !== 'read' || isPcFlashcardView) return;
             const now = performance.now();
             pointerHistoryRef.current.push({ x: e.clientX, y: e.clientY, time: now });
             while (pointerHistoryRef.current.length > 2 && now - pointerHistoryRef.current[0].time > 140) {
@@ -1737,7 +1895,7 @@ export default function App() {
             if (dist >= 10 && !dragStartRef.current.swipeStartTime) {
               dragStartRef.current.swipeStartTime = now;
             }
-            setDragPos({ x: e.clientX - 25, y: e.clientY - 25 });
+            setDragPos({ x: e.clientX - fabHalf, y: e.clientY - fabHalf });
           }}
           onPointerUp={(e) => {
             e.preventDefault();
@@ -1745,44 +1903,48 @@ export default function App() {
               (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
             } catch (err) {}
 
-            const now = performance.now();
-            const totalDx = e.clientX - dragStartRef.current.x;
-            const totalDy = e.clientY - dragStartRef.current.y;
-            const totalDist = Math.hypot(totalDx, totalDy);
-
-            const swipeDuration = dragStartRef.current.swipeStartTime
-              ? (now - dragStartRef.current.swipeStartTime)
-              : (now - dragStartRef.current.time);
-            const totalDuration = now - dragStartRef.current.time;
-
-            const history = pointerHistoryRef.current;
-            const recentPt = history.find((p) => now - p.time <= 100);
-            const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
-
-            const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
-
-            if (isQuickSwipe) {
-              const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
-              const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
-              const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
-              const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
-              const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapRead);
-              setSnapRead(targetCorner);
-            } else if (dragStartRef.current.moved) {
-              const newSnap = findSnapPositionWithinRange(
-                e.clientX,
-                e.clientY,
-                winSize.w,
-                winSize.h,
-                'read',
-                { kana: snapKana, hanViet: snapHanViet, read: snapRead },
-                SNAP_RANGE
-              );
-              if (newSnap) {
-                setSnapRead(newSnap);
-              }
-            } else {
+            if (isPcFlashcardView) {
               handleReadClick();
+            } else {
+              const now = performance.now();
+              const totalDx = e.clientX - dragStartRef.current.x;
+              const totalDy = e.clientY - dragStartRef.current.y;
+              const totalDist = Math.hypot(totalDx, totalDy);
+
+              const swipeDuration = dragStartRef.current.swipeStartTime
+                ? (now - dragStartRef.current.swipeStartTime)
+                : (now - dragStartRef.current.time);
+              const totalDuration = now - dragStartRef.current.time;
+
+              const history = pointerHistoryRef.current;
+              const recentPt = history.find((p) => now - p.time <= 100);
+              const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
+
+              const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
+
+              if (isQuickSwipe) {
+                const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
+                const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
+                const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
+                const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
+                const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapRead);
+                setSnapRead(targetCorner);
+              } else if (dragStartRef.current.moved) {
+                const newSnap = findSnapPositionWithinRange(
+                  e.clientX,
+                  e.clientY,
+                  winSize.w,
+                  winSize.h,
+                  'read',
+                  { kana: snapKana, hanViet: snapHanViet, read: snapRead },
+                  SNAP_RANGE
+                );
+                if (newSnap) {
+                  setSnapRead(newSnap);
+                }
+              } else {
+                handleReadClick();
+              }
             }
 
             setIsDragging(false);

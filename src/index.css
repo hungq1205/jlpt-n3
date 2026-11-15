@@ -1075,6 +1075,38 @@ input:checked + .setting-toggle-slider:before {
   text-align: right;
 }
 
+.setting-number-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setting-number-input {
+  width: 72px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1.5px solid #cbd5e1;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  text-align: center;
+  padding: 0 8px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.setting-number-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.setting-unit-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+}
+
 /* ---------- Front Face Displays ---------- */
 .front-kana-kanji {
   display: flex;
@@ -1583,6 +1615,117 @@ input:checked + .setting-toggle-slider:before {
   line-height: 1.4;
 }
 
+.grammar-notes-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #475569;
+  line-height: 1.45;
+  list-style-type: disc;
+}
+
+.grammar-note-item {
+  padding-left: 2px;
+}
+
+.grammar-exercises-section {
+  margin-top: 2px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.grammar-exercises-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.grammar-exercises-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.grammar-exercise-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.grammar-exercise-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.grammar-exercise-prompt-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.grammar-exercise-vi {
+  font-size: 0.86rem;
+  color: #1e293b;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.grammar-exercise-toggle {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.grammar-exercise-toggle:hover {
+  border-color: #3b82f6;
+  color: #2563eb;
+}
+
+.grammar-exercise-toggle.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.grammar-exercise-answer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.grammar-exercise-answer .jp-sentence {
+  font-size: 0.94rem;
+  font-weight: 500;
+  color: #0f172a;
+  line-height: 1.6;
+  flex: 1;
+}
+
 /* ============================================================
    GRAMMAR QUIZ STYLES (FIT SCREEN - NO SCROLL)
    ============================================================ */
@@ -1981,7 +2124,7 @@ input:checked + .setting-toggle-slider:before {
     padding: 12px 16px;
   }
   .face {
-    padding: 24px 24px 72px;
+    padding: 24px 24px 28px;
   }
   .controls {
     grid-template-columns: 1fr 1.6fr 1fr .8fr;
@@ -1994,5 +2137,23 @@ input:checked + .setting-toggle-slider:before {
     width: 54px;
     height: 54px;
     font-size: 22px;
+  }
+}
+
+/* PC / Desktop view: keep flashcard as a centered vertical card with blank sides */
+@media (min-width: 768px) {
+  .card-wrap-container {
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 74px;
+  }
+  .card-wrap {
+    flex: none;
+    width: min(410px, calc((100dvh - 160px) * 0.68), calc(100vw - 168px));
+    height: min(620px, calc(100dvh - 160px));
+    margin-bottom: 0;
+  }
+  .controls-dock {
+    max-width: 410px;
   }
 }
