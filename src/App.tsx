@@ -42,6 +42,13 @@ export default function App() {
     const parsed = saved !== null ? parseFloat(saved) : 3;
     return !Number.isNaN(parsed) && parsed >= 1 ? parsed : 3;
   });
+  const [autoNextIntervalInput, setAutoNextIntervalInput] = useState<string>(() => autoNextInterval.toString());
+  const [autoNextFlipDuration, setAutoNextFlipDuration] = useState<number>(() => {
+    const saved = localStorage.getItem('kanji_auto_next_flip_interval');
+    const parsed = saved !== null ? parseFloat(saved) : 0;
+    return !Number.isNaN(parsed) && parsed >= 0 ? parsed : 0;
+  });
+  const [autoNextFlipInput, setAutoNextFlipInput] = useState<string>(() => autoNextFlipDuration.toString());
   const [hanVietSensitivity, setHanVietSensitivity] = useState<number>(() => {
     const saved = localStorage.getItem('kanji_hv_sensitivity');
     return saved !== null ? parseInt(saved, 10) : 70;
@@ -74,6 +81,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('kanji_auto_next_interval', autoNextInterval.toString());
   }, [autoNextInterval]);
+
+  useEffect(() => {
+    localStorage.setItem('kanji_auto_next_flip_interval', autoNextFlipDuration.toString());
+  }, [autoNextFlipDuration]);
 
   useEffect(() => {
     localStorage.setItem('kanji_hv_sensitivity', hanVietSensitivity.toString());
@@ -247,7 +258,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [pos, selectedLessonId, autoReadEnabled, activeView, currentCard, readCurrentCardFront]);
 
-  // Auto-next flashcard timer
+  // Auto-next & auto-flip flashcard timer
   useEffect(() => {
     if (
       !autoNextEnabled ||
@@ -260,6 +271,22 @@ export default function App() {
       return;
     }
 
+    if (autoNextFlipDuration > 0) {
+      if (!flipped) {
+        const frontDelayMs = Math.max(1000, Math.round(autoNextInterval * 1000));
+        const timer = window.setTimeout(() => {
+          setFlipped(true);
+        }, frontDelayMs);
+        return () => window.clearTimeout(timer);
+      }
+
+      const backDelayMs = Math.max(1000, Math.round(autoNextFlipDuration * 1000));
+      const timer = window.setTimeout(() => {
+        handleNext();
+      }, backDelayMs);
+      return () => window.clearTimeout(timer);
+    }
+
     const delayMs = Math.max(1000, Math.round(autoNextInterval * 1000));
     const timer = window.setTimeout(() => {
       handleNext();
@@ -269,6 +296,7 @@ export default function App() {
   }, [
     autoNextEnabled,
     autoNextInterval,
+    autoNextFlipDuration,
     activeView,
     isHanVietMode,
     isDragging,
@@ -524,42 +552,18 @@ export default function App() {
   }, [isHanVietMode, findNearestKanji, hanVietSensitivity]);
 
   const isPcView = winSize.w >= 768;
-  const isPcFlashcardView = isPcView && activeView === 'flashcard';
   const fabSize = winSize.w >= 640 ? 54 : 50;
   const fabHalf = fabSize / 2;
 
-  const [pcCardBounds, setPcCardBounds] = useState<{ top: number; right: number; height: number } | null>(null);
-
-  useLayoutEffect(() => {
-    if (!isPcFlashcardView) {
-      setPcCardBounds(null);
-      return;
-    }
-    const measureCard = () => {
-      const el = cardWrapRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) {
-        setPcCardBounds({ top: r.top, right: r.right, height: r.height });
-      }
-    };
-    measureCard();
-    const rafId = window.requestAnimationFrame(measureCard);
-    return () => window.cancelAnimationFrame(rafId);
-  }, [isPcFlashcardView, winSize.w, winSize.h, selectedLessonId]);
-
-  // Compute resting coordinates for FABs (side-anchored beside vertical card on PC, corner-snapped on mobile)
+  // Compute resting coordinates for FABs (fixed side column on PC, corner-snapped on mobile across all pages)
   const snapCoords = useMemo(() => {
-    if (isPcFlashcardView) {
-      const cardH = pcCardBounds?.height ?? Math.min(620, Math.max(260, winSize.h - 160));
-      const cardW = Math.min(410, cardH * 0.68, Math.max(240, winSize.w - 168));
-      const cardRight = pcCardBounds?.right ?? (winSize.w + cardW) / 2;
-      const cardTop = pcCardBounds?.top ?? Math.max(62, (winSize.h - 74 - cardH) / 2 + 24);
-      const sideGap = 16;
+    if (isPcView) {
+      const contentW = Math.min(580, Math.max(280, winSize.w - 168));
+      const contentRight = (winSize.w + contentW) / 2;
+      const x = Math.min(winSize.w - fabSize - 16, contentRight + 16);
       const btnGap = 14;
       const totalStackH = 3 * fabSize + 2 * btnGap;
-      const x = Math.min(winSize.w - fabSize - 16, cardRight + sideGap);
-      const startY = Math.max(62, cardTop + (cardH - totalStackH) / 2);
+      const startY = Math.max(62, (winSize.h - totalStackH) / 2);
 
       return {
         kana: { x, y: startY },
@@ -571,16 +575,16 @@ export default function App() {
     return getSnapCoords(
       snapKana,
       snapHanViet,
-      activeView === 'flashcard' ? snapRead : undefined,
+      snapRead,
       winSize.w,
       winSize.h,
       fabSize
     );
-  }, [isPcFlashcardView, pcCardBounds, fabSize, snapKana, snapHanViet, snapRead, activeView, winSize.w, winSize.h]);
+  }, [isPcView, fabSize, snapKana, snapHanViet, snapRead, winSize.w, winSize.h]);
 
   // Compute predicted release snap destination while dragging (mobile only)
   const targetSnapCoords = useMemo(() => {
-    if (isPcFlashcardView || !isDragging || !dragBtn || !dragPos) return null;
+    if (isPcView || !isDragging || !dragBtn || !dragPos) return null;
     const currentCenterX = dragPos.x + fabHalf;
     const currentCenterY = dragPos.y + fabHalf;
     const matchedSnap = findSnapPositionWithinRange(
@@ -592,14 +596,14 @@ export default function App() {
       {
         kana: snapKana,
         hanViet: snapHanViet,
-        read: activeView === 'flashcard' ? snapRead : undefined,
+        read: snapRead,
       }
     );
     if (!matchedSnap) return null;
     const coords = getSnapCoords(
       dragBtn === 'kana' ? matchedSnap : snapKana,
       dragBtn === 'hanviet' ? matchedSnap : snapHanViet,
-      activeView === 'flashcard' ? (dragBtn === 'read' ? matchedSnap : snapRead) : undefined,
+      dragBtn === 'read' ? matchedSnap : snapRead,
       winSize.w,
       winSize.h,
       fabSize
@@ -607,7 +611,7 @@ export default function App() {
     const targetPt = dragBtn === 'kana' ? coords.kana : dragBtn === 'hanviet' ? coords.hanViet : coords.read;
     if (!targetPt) return null;
     return { x: targetPt.x + fabHalf, y: targetPt.y + fabHalf };
-  }, [isPcFlashcardView, isDragging, dragBtn, dragPos, fabHalf, fabSize, snapKana, snapHanViet, snapRead, activeView, winSize.w, winSize.h]);
+  }, [isPcView, isDragging, dragBtn, dragPos, fabHalf, fabSize, snapKana, snapHanViet, snapRead, winSize.w, winSize.h]);
 
   // Sync kana class with body
   useEffect(() => {
@@ -1452,7 +1456,7 @@ export default function App() {
             </div>
             <div className="setting-row" style={{ opacity: autoNextEnabled ? 1 : 0.65 }}>
               <label htmlFor="autoNextIntervalInput" className="setting-desc" style={{ marginTop: 0 }}>
-                Delay before next card
+                {autoNextFlipDuration > 0 ? 'Delay before flip (n)' : 'Delay before next card (n)'}
               </label>
               <div className="setting-number-group">
                 <input
@@ -1461,17 +1465,51 @@ export default function App() {
                   min={1}
                   max={120}
                   step={1}
-                  value={autoNextInterval}
+                  value={autoNextIntervalInput}
                   onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!Number.isNaN(val)) {
-                      setAutoNextInterval(Math.max(1, Math.min(120, val)));
+                    const raw = e.target.value;
+                    setAutoNextIntervalInput(raw);
+                    const val = parseFloat(raw);
+                    if (!Number.isNaN(val) && val >= 1) {
+                      setAutoNextInterval(Math.min(120, val));
                     }
                   }}
                   onBlur={() => {
-                    if (!autoNextInterval || autoNextInterval < 1) {
-                      setAutoNextInterval(3);
+                    const val = parseFloat(autoNextIntervalInput);
+                    const normalized = !Number.isNaN(val) && val >= 1 ? Math.min(120, val) : 3;
+                    setAutoNextInterval(normalized);
+                    setAutoNextIntervalInput(normalized.toString());
+                  }}
+                  className="setting-number-input"
+                />
+                <span className="setting-unit-label">s</span>
+              </div>
+            </div>
+            <div className="setting-row" style={{ opacity: autoNextEnabled ? 1 : 0.65 }}>
+              <label htmlFor="autoNextFlipInput" className="setting-desc" style={{ marginTop: 0 }}>
+                Stay on back after flip (m, 0 = no flip)
+              </label>
+              <div className="setting-number-group">
+                <input
+                  id="autoNextFlipInput"
+                  type="number"
+                  min={0}
+                  max={120}
+                  step={1}
+                  value={autoNextFlipInput}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setAutoNextFlipInput(raw);
+                    const val = parseFloat(raw);
+                    if (!Number.isNaN(val) && val >= 0) {
+                      setAutoNextFlipDuration(Math.min(120, val));
                     }
+                  }}
+                  onBlur={() => {
+                    const val = parseFloat(autoNextFlipInput);
+                    const normalized = !Number.isNaN(val) && val >= 0 ? Math.min(120, val) : 0;
+                    setAutoNextFlipDuration(normalized);
+                    setAutoNextFlipInput(normalized.toString());
                   }}
                   className="setting-number-input"
                 />
@@ -1601,12 +1639,12 @@ export default function App() {
       <button
         className={`fab fab-kana ${isFabPressed || showKana ? 'pressed' : ''} ${isDragging && dragBtn === 'kana' ? 'is-dragging' : ''}`}
         id="kanaHoldBtn"
-        title={isPcFlashcardView ? 'Kana: Giữ để hiển thị' : 'Kana: Giữ để hiển thị / Kéo để chuyển vị trí'}
+        title={isPcView ? 'Kana: Giữ để hiển thị' : 'Kana: Giữ để hiển thị / Kéo để chuyển vị trí'}
         style={{
           left: `${dragBtn === 'kana' && dragPos ? dragPos.x : snapCoords.kana.x}px`,
           top: `${dragBtn === 'kana' && dragPos ? dragPos.y : snapCoords.kana.y}px`,
           opacity: restingFabOpacity,
-          cursor: isPcFlashcardView ? 'pointer' : undefined,
+          cursor: isPcView ? 'pointer' : undefined,
           transition: dragBtn === 'kana' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
         }}
         onPointerDown={(e) => {
@@ -1623,7 +1661,7 @@ export default function App() {
           startReveal();
         }}
         onPointerMove={(e) => {
-          if (dragBtn !== 'kana' || isPcFlashcardView) return;
+          if (dragBtn !== 'kana' || isPcView) return;
           const now = performance.now();
           pointerHistoryRef.current.push({ x: e.clientX, y: e.clientY, time: now });
           while (pointerHistoryRef.current.length > 2 && now - pointerHistoryRef.current[0].time > 140) {
@@ -1647,7 +1685,7 @@ export default function App() {
           } catch (err) {}
           stopReveal();
 
-          if (!isPcFlashcardView) {
+          if (!isPcView) {
             const now = performance.now();
             const totalDx = e.clientX - dragStartRef.current.x;
             const totalDy = e.clientY - dragStartRef.current.y;
@@ -1678,7 +1716,7 @@ export default function App() {
                 winSize.w,
                 winSize.h,
                 'kana',
-                { kana: snapKana, hanViet: snapHanViet, read: activeView === 'flashcard' ? snapRead : undefined },
+                { kana: snapKana, hanViet: snapHanViet, read: snapRead },
                 SNAP_RANGE
               );
               if (newSnap) {
@@ -1709,12 +1747,12 @@ export default function App() {
       <button
         className={`fab fab-hanviet ${isHanVietMode ? 'active-mode' : ''} ${isDragging && dragBtn === 'hanviet' ? 'is-dragging' : ''}`}
         id="hanvietInspectBtn"
-        title={isPcFlashcardView ? 'Hán-Việt: Chạm để bật chế độ tra từ / Kéo để soi từ' : 'Hán-Việt: Chạm để bật chế độ tra từ / Kéo để chuyển vị trí'}
+        title={isPcView ? 'Hán-Việt: Chạm để bật chế độ tra từ / Kéo để soi từ' : 'Hán-Việt: Chạm để bật chế độ tra từ / Kéo để chuyển vị trí'}
         style={{
           left: `${dragBtn === 'hanviet' && dragPos ? dragPos.x : snapCoords.hanViet.x}px`,
           top: `${dragBtn === 'hanviet' && dragPos ? dragPos.y : snapCoords.hanViet.y}px`,
           opacity: restingFabOpacity,
-          cursor: isPcFlashcardView ? 'pointer' : undefined,
+          cursor: isPcView ? 'pointer' : undefined,
           transition: dragBtn === 'hanviet' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
         }}
         onPointerDown={(e) => {
@@ -1751,17 +1789,17 @@ export default function App() {
             dragStartRef.current.swipeStartTime = now;
           }
 
-          if (!isPcFlashcardView && dist > 70) {
+          if (!isPcView && dist > 70) {
             setIsProjecting(false);
             setProjPoint(null);
             setActiveBubble(null);
             setDragPos({ x: e.clientX - fabHalf, y: e.clientY - fabHalf });
           } else {
-            const clampedDx = isPcFlashcardView && dist > 68 ? (dx / dist) * 68 : dx;
-            const clampedDy = isPcFlashcardView && dist > 68 ? (dy / dist) * 68 : dy;
+            const clampedDx = isPcView && dist > 68 ? (dx / dist) * 68 : dx;
+            const clampedDy = isPcView && dist > 68 ? (dy / dist) * 68 : dy;
             setDragPos({
-              x: (isPcFlashcardView ? snapCoords.hanViet.x + clampedDx : e.clientX - fabHalf),
-              y: (isPcFlashcardView ? snapCoords.hanViet.y + clampedDy : e.clientY - fabHalf),
+              x: (isPcView ? snapCoords.hanViet.x + clampedDx : e.clientX - fabHalf),
+              y: (isPcView ? snapCoords.hanViet.y + clampedDy : e.clientY - fabHalf),
             });
             setIsProjecting(true);
 
@@ -1782,7 +1820,7 @@ export default function App() {
             (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
           } catch (err) {}
 
-          if (isPcFlashcardView) {
+          if (isPcView) {
             if (dragStartRef.current.moved) {
               setActiveBubble(null);
             } else {
@@ -1822,7 +1860,7 @@ export default function App() {
                 winSize.w,
                 winSize.h,
                 'hanviet',
-                { kana: snapKana, hanViet: snapHanViet, read: activeView === 'flashcard' ? snapRead : undefined },
+                { kana: snapKana, hanViet: snapHanViet, read: snapRead },
                 SNAP_RANGE
               );
               if (newSnap) {
@@ -1874,7 +1912,7 @@ export default function App() {
             left: `${dragBtn === 'read' && dragPos ? dragPos.x : snapCoords.read.x}px`,
             top: `${dragBtn === 'read' && dragPos ? dragPos.y : snapCoords.read.y}px`,
             opacity: restingFabOpacity,
-            cursor: isPcFlashcardView ? 'pointer' : undefined,
+            cursor: isPcView ? 'pointer' : undefined,
             transition: dragBtn === 'read' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
           }}
           onPointerDown={(e) => {
@@ -1890,7 +1928,7 @@ export default function App() {
             setIsDragging(false);
           }}
           onPointerMove={(e) => {
-            if (dragBtn !== 'read' || isPcFlashcardView) return;
+            if (dragBtn !== 'read' || isPcView) return;
             const now = performance.now();
             pointerHistoryRef.current.push({ x: e.clientX, y: e.clientY, time: now });
             while (pointerHistoryRef.current.length > 2 && now - pointerHistoryRef.current[0].time > 140) {
@@ -1913,7 +1951,7 @@ export default function App() {
               (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
             } catch (err) {}
 
-            if (isPcFlashcardView) {
+            if (isPcView) {
               handleReadClick();
             } else {
               const now = performance.now();

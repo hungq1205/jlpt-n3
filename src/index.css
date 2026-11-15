@@ -768,6 +768,9 @@ rt.kana-overlay,
 .simple-view-wrap {
   flex: 1;
   min-height: 0;
+  width: 100%;
+  max-width: 580px;
+  margin: 0 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   background: #fff;
@@ -856,6 +859,9 @@ rt.kana-overlay,
 .lessons-view {
   flex: 1;
   min-height: 0;
+  width: 100%;
+  max-width: 580px;
+  margin: 0 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   background: #fff;
@@ -942,6 +948,9 @@ rt.kana-overlay,
 .settings-view {
   flex: 1;
   min-height: 0;
+  width: 100%;
+  max-width: 580px;
+  margin: 0 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   background: #fff;
