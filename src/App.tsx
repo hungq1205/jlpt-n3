@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
-import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders, GraduationCap } from 'lucide-react';
+import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders, GraduationCap, Moon } from 'lucide-react';
 import { LESSONS, Lesson, Flashcard, FlashcardType } from './data/flashcards';
 import { speakJapanese, speakVietnamese } from './utils/speech';
 import { getHanViet, getKanjiMeaning } from './data/hanVietDict';
@@ -50,6 +50,9 @@ export default function App() {
     const saved = localStorage.getItem('kanji_fab_transparency');
     return saved !== null ? parseInt(saved, 10) : 0;
   });
+  const [nightMode, setNightMode] = useState<boolean>(() => {
+    return localStorage.getItem('kanji_night_mode') === 'true';
+  });
 
   // Save settings when changed
   useEffect(() => {
@@ -79,6 +82,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('kanji_fab_transparency', fabTransparency.toString());
   }, [fabTransparency]);
+
+  useEffect(() => {
+    localStorage.setItem('kanji_night_mode', nightMode.toString());
+    document.documentElement.classList.toggle('night-theme', nightMode);
+    document.body.classList.toggle('night-theme', nightMode);
+  }, [nightMode]);
 
   const restingFabOpacity = Math.max(0.08, (100 - fabTransparency) / 100);
 
@@ -786,7 +795,7 @@ export default function App() {
       case 'hanviet':
         return (
           <div style={{ textAlign: 'center' }}>
-            <span style={{ fontSize: 'clamp(32px, 8.5vw, 54px)', fontWeight: '800', color: '#7c3aed', letterSpacing: '1px' }}>
+            <span className="front-hanviet-text">
               {currentCard.hanViet}
             </span>
           </div>
@@ -795,7 +804,7 @@ export default function App() {
       case 'meaning':
         return (
           <div style={{ textAlign: 'center', padding: '0 10px' }}>
-            <span style={{ fontSize: 'clamp(24px, 6vw, 36px)', fontWeight: '700', color: '#1f2937', lineHeight: 1.35 }}>
+            <span className="front-meaning-text">
               {currentCard.viet}
             </span>
           </div>
@@ -1007,13 +1016,12 @@ export default function App() {
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '4px 0' }}>
                       <ruby
-                        className="jp-word-container"
+                        className="jp-word-container back-kanji-hero"
                         data-kanji-target="true"
                         data-kanji={currentCard.kanji}
                         data-kana={currentCard.onyomi || currentCard.kana}
                         data-hanviet={currentCard.hanViet}
                         data-meaning={currentCard.viet}
-                        style={{ fontSize: '48px', fontWeight: '800', color: '#111827' }}
                       >
                         <span className="kanji-text">{currentCard.kanji}</span>
                         <rt className="ruby-text" style={{ fontSize: '0.36em' }}>
@@ -1180,15 +1188,7 @@ export default function App() {
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '9px 12px 9px 36px',
-                  borderRadius: '12px',
-                  border: '1px solid #e5e7eb',
-                  fontSize: '14px',
-                  outline: 'none',
-                  background: '#f9fafb',
-                }}
+                className="list-search-input"
               />
             </div>
 
@@ -1222,18 +1222,12 @@ export default function App() {
             {filteredList.map((w) => (
               <div
                 key={w.id}
-                style={{
-                  padding: '14px 16px',
-                  borderRadius: '16px',
-                  border: '1px solid #f0f1f4',
-                  background: '#fff',
-                  boxShadow: '0 1px 3px rgba(0,0,0,.03)',
-                }}
+                className="list-word-card"
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <ruby
-                      className="jp-word-container"
+                      className="jp-word-container list-word-kanji"
                       data-kanji-target="true"
                       data-kanji={w.kanji}
                       data-kana={w.type === 'kanji' ? w.onyomi || w.kana : w.kana}
@@ -1241,8 +1235,6 @@ export default function App() {
                       data-meaning={w.viet}
                       style={{
                         fontSize: w.type === 'kanji' ? '22px' : '18px',
-                        fontWeight: '700',
-                        color: '#111827',
                         cursor: isHanVietMode ? 'crosshair' : 'inherit',
                       }}
                     >
@@ -1277,17 +1269,17 @@ export default function App() {
                 </div>
 
                 {w.type === 'kanji' && (
-                  <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#475569', background: '#f8fafc', padding: '6px 10px', borderRadius: '8px', marginBottom: '6px' }}>
+                  <div className="list-onkun-box">
                     <span><strong>On:</strong> {w.onyomi || '—'}</span>
                     <span><strong>Kun:</strong> {w.kunyomi || '—'}</span>
                   </div>
                 )}
 
-                <div style={{ fontSize: '14.5px', fontWeight: '600', color: '#1f2937', marginBottom: '6px' }}>
+                <div className="list-word-meaning">
                   {w.viet}
                 </div>
 
-                <div style={{ fontSize: '13px', color: '#6b7280', background: '#f9fafb', padding: '8px 10px', borderRadius: '10px' }}>
+                <div className="list-example-box">
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div className="ex-jp" style={{ margin: 0, fontSize: '13.5px', lineHeight: 1.85 }}>
                       {renderRubySentence(w.exampleRuby, w.example)}
@@ -1301,7 +1293,7 @@ export default function App() {
                       <Volume2 className="w-3.5 h-3.5 text-blue-500" />
                     </button>
                   </div>
-                  <div style={{ marginTop: '2px', color: '#9ca3af', fontSize: '12px' }}>{w.exampleViet}</div>
+                  <div className="list-example-vi">{w.exampleViet}</div>
                 </div>
               </div>
             ))}
@@ -1360,6 +1352,24 @@ export default function App() {
       {/* VIEW 4: Settings Screen (clean, no redundant titles or back button, just controls) */}
       {activeView === 'settings' && (
         <main className="settings-view">
+          {/* Night Theme Toggle */}
+          <div className="setting-section">
+            <div className="setting-row">
+              <div className="setting-title">
+                <Moon className="w-4 h-4 text-indigo-500" />
+                <span>Night theme</span>
+              </div>
+              <label className="setting-toggle">
+                <input
+                  type="checkbox"
+                  checked={nightMode}
+                  onChange={(e) => setNightMode(e.target.checked)}
+                />
+                <span className="setting-toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
           {/* Section 1: Front Face Content Selection */}
           <div className="setting-section">
             <div className="setting-title">
