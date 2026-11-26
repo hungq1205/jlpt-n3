@@ -106,6 +106,7 @@ export default function App() {
   const [order, setOrder] = useState<number[]>(() => cards.map((_, i) => i));
   const [pos, setPos] = useState<number>(0);
   const [flipped, setFlipped] = useState<boolean>(false);
+  const [isAutoFlipped, setIsAutoFlipped] = useState<boolean>(false);
   const [mode, setMode] = useState<'jp-vi' | 'vi-jp'>('jp-vi');
   const [showKana, setShowKana] = useState<boolean>(false);
   const [isFabPressed, setIsFabPressed] = useState<boolean>(false);
@@ -116,6 +117,7 @@ export default function App() {
     setOrder(cards.map((_, i) => i));
     setPos(0);
     setFlipped(false);
+    setIsAutoFlipped(false);
   }, [selectedLessonId, cards]);
 
   // Draggable FAB snap positions
@@ -186,20 +188,24 @@ export default function App() {
   // Actions
   const handleFlip = useCallback(() => {
     if (isHanVietMode || Date.now() < suppressClickUntilRef.current) return;
+    setIsAutoFlipped(false);
     setFlipped((prev) => !prev);
   }, [isHanVietMode]);
 
   const handleNext = useCallback(() => {
+    setIsAutoFlipped(false);
     setFlipped(false);
     setPos((prev) => (prev + 1) % order.length);
   }, [order.length]);
 
   const handlePrev = useCallback(() => {
+    setIsAutoFlipped(false);
     setFlipped(false);
     setPos((prev) => (prev - 1 + order.length) % order.length);
   }, [order.length]);
 
   const handleShuffle = useCallback(() => {
+    setIsAutoFlipped(false);
     setFlipped(false);
     setOrder((prev) => [...prev].sort(() => Math.random() - 0.5));
     setPos(0);
@@ -207,6 +213,7 @@ export default function App() {
 
   const handleToggleMode = useCallback(() => {
     setMode((prev) => (prev === 'jp-vi' ? 'vi-jp' : 'jp-vi'));
+    setIsAutoFlipped(false);
     setFlipped(false);
   }, []);
 
@@ -275,6 +282,7 @@ export default function App() {
       if (!flipped) {
         const frontDelayMs = Math.max(1000, Math.round(autoNextInterval * 1000));
         const timer = window.setTimeout(() => {
+          setIsAutoFlipped(true);
           setFlipped(true);
         }, frontDelayMs);
         return () => window.clearTimeout(timer);
@@ -307,6 +315,12 @@ export default function App() {
     order.length,
     handleNext,
   ]);
+
+  useEffect(() => {
+    if (!flipped || !autoNextEnabled || autoNextFlipDuration <= 0 || activeView !== 'flashcard') {
+      setIsAutoFlipped(false);
+    }
+  }, [flipped, autoNextEnabled, autoNextFlipDuration, activeView]);
 
   // Audio trigger helper with volume
   const playAudio = useCallback((e: React.MouseEvent | React.TouchEvent, text: string, isVn = false) => {
@@ -993,7 +1007,7 @@ export default function App() {
               </section>
 
               {/* Back Face (Reveals all other information) */}
-              <section className="face back" id="back">
+              <section className={`face back ${isAutoFlipped && flipped ? 'show-kana' : ''}`} id="back">
                 <div className="label">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {currentCard.partOfSpeech && (
