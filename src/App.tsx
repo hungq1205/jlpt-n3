@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
-import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders, GraduationCap, Moon } from 'lucide-react';
+import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders, GraduationCap, Moon, Pause } from 'lucide-react';
 import { LESSONS, Lesson, Flashcard, FlashcardType } from './data/flashcards';
 import { speakJapanese, speakVietnamese } from './utils/speech';
 import { getHanViet, getKanjiMeaning } from './data/hanVietDict';
@@ -110,6 +110,7 @@ export default function App() {
   const [mode, setMode] = useState<'jp-vi' | 'vi-jp'>('jp-vi');
   const [showKana, setShowKana] = useState<boolean>(false);
   const [isFabPressed, setIsFabPressed] = useState<boolean>(false);
+  const [isAutoHoldPressed, setIsAutoHoldPressed] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [isHolding, setIsHolding] = useState<boolean>(false);
   const [interactionTick, setInteractionTick] = useState<number>(0);
@@ -138,7 +139,8 @@ export default function App() {
   const [snapKana, setSnapKana] = useState<SnapPosition>('BR');
   const [snapHanViet, setSnapHanViet] = useState<SnapPosition>('BR');
   const [snapRead, setSnapRead] = useState<SnapPosition>('BR');
-  const [dragBtn, setDragBtn] = useState<'kana' | 'hanviet' | 'read' | null>(null);
+  const [snapAutoHold, setSnapAutoHold] = useState<SnapPosition>('BL');
+  const [dragBtn, setDragBtn] = useState<'kana' | 'hanviet' | 'read' | 'autohold' | null>(null);
   const [dragPos, setDragPos] = useState<Point | null>(null);
   const [dragOrigin, setDragOrigin] = useState<Point | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -375,6 +377,7 @@ export default function App() {
       isDragging ||
       dragBtn !== null ||
       isHolding ||
+      isAutoHoldPressed ||
       showKana ||
       order.length <= 1
     ) {
@@ -413,6 +416,7 @@ export default function App() {
     isDragging,
     dragBtn,
     isHolding,
+    isAutoHoldPressed,
     showKana,
     interactionTick,
     pos,
@@ -465,10 +469,11 @@ export default function App() {
     setIsFabPressed(false);
   }, []);
 
-  // Global pointer release guard for Kana reveal
+  // Global pointer release guard for hold FABs
   useEffect(() => {
     const handleGlobalRelease = () => {
       stopReveal();
+      setIsAutoHoldPressed(false);
     };
 
     window.addEventListener('pointerup', handleGlobalRelease);
@@ -689,6 +694,7 @@ export default function App() {
         kana: { x, y: startY },
         hanViet: { x, y: startY + fabSize + btnGap },
         read: { x, y: startY + 2 * (fabSize + btnGap) },
+        autoHold: { x, y: Math.min(winSize.h - fabSize - 16, startY + 3 * (fabSize + btnGap)) },
       };
     }
 
@@ -698,15 +704,18 @@ export default function App() {
       snapRead,
       winSize.w,
       winSize.h,
-      fabSize
+      fabSize,
+      10,
+      autoNextEnabled ? snapAutoHold : undefined
     );
-  }, [isPcView, fabSize, snapKana, snapHanViet, snapRead, winSize.w, winSize.h]);
+  }, [isPcView, fabSize, snapKana, snapHanViet, snapRead, snapAutoHold, autoNextEnabled, winSize.w, winSize.h]);
 
   // Compute predicted release snap destination while dragging (mobile only)
   const targetSnapCoords = useMemo(() => {
     if (isPcView || !isDragging || !dragBtn || !dragPos) return null;
     const currentCenterX = dragPos.x + fabHalf;
     const currentCenterY = dragPos.y + fabHalf;
+    const activeAutoHoldSnap = autoNextEnabled ? snapAutoHold : undefined;
     const matchedSnap = findSnapPositionWithinRange(
       currentCenterX,
       currentCenterY,
@@ -717,6 +726,7 @@ export default function App() {
         kana: snapKana,
         hanViet: snapHanViet,
         read: snapRead,
+        autoHold: activeAutoHoldSnap,
       }
     );
     if (!matchedSnap) return null;
@@ -726,12 +736,21 @@ export default function App() {
       dragBtn === 'read' ? matchedSnap : snapRead,
       winSize.w,
       winSize.h,
-      fabSize
+      fabSize,
+      10,
+      dragBtn === 'autohold' ? matchedSnap : activeAutoHoldSnap
     );
-    const targetPt = dragBtn === 'kana' ? coords.kana : dragBtn === 'hanviet' ? coords.hanViet : coords.read;
+    const targetPt =
+      dragBtn === 'kana'
+        ? coords.kana
+        : dragBtn === 'hanviet'
+        ? coords.hanViet
+        : dragBtn === 'read'
+        ? coords.read
+        : coords.autoHold;
     if (!targetPt) return null;
     return { x: targetPt.x + fabHalf, y: targetPt.y + fabHalf };
-  }, [isPcView, isDragging, dragBtn, dragPos, fabHalf, fabSize, snapKana, snapHanViet, snapRead, winSize.w, winSize.h]);
+  }, [isPcView, isDragging, dragBtn, dragPos, fabHalf, fabSize, snapKana, snapHanViet, snapRead, snapAutoHold, autoNextEnabled, winSize.w, winSize.h]);
 
   // Sync kana class with body
   useEffect(() => {
@@ -1742,16 +1761,40 @@ export default function App() {
             >
               <circle
                 r="24"
-                fill={dragBtn === 'kana' ? '#3b82f6' : dragBtn === 'hanviet' ? '#8b5cf6' : '#10b981'}
+                fill={
+                  dragBtn === 'kana'
+                    ? '#3b82f6'
+                    : dragBtn === 'hanviet'
+                    ? '#8b5cf6'
+                    : dragBtn === 'read'
+                    ? '#10b981'
+                    : '#f59e0b'
+                }
                 fillOpacity="0.10"
-                stroke={dragBtn === 'kana' ? '#3b82f6' : dragBtn === 'hanviet' ? '#8b5cf6' : '#10b981'}
+                stroke={
+                  dragBtn === 'kana'
+                    ? '#3b82f6'
+                    : dragBtn === 'hanviet'
+                    ? '#8b5cf6'
+                    : dragBtn === 'read'
+                    ? '#10b981'
+                    : '#f59e0b'
+                }
                 strokeWidth="1.8"
                 strokeDasharray="4 3"
                 opacity="0.55"
               />
               <circle
                 r="3"
-                fill={dragBtn === 'kana' ? '#3b82f6' : dragBtn === 'hanviet' ? '#8b5cf6' : '#10b981'}
+                fill={
+                  dragBtn === 'kana'
+                    ? '#3b82f6'
+                    : dragBtn === 'hanviet'
+                    ? '#8b5cf6'
+                    : dragBtn === 'read'
+                    ? '#10b981'
+                    : '#f59e0b'
+                }
                 opacity="0.35"
               />
             </g>
@@ -1840,7 +1883,7 @@ export default function App() {
                 winSize.w,
                 winSize.h,
                 'kana',
-                { kana: snapKana, hanViet: snapHanViet, read: snapRead },
+                { kana: snapKana, hanViet: snapHanViet, read: snapRead, autoHold: autoNextEnabled ? snapAutoHold : undefined },
                 SNAP_RANGE
               );
               if (newSnap) {
@@ -1984,7 +2027,7 @@ export default function App() {
                 winSize.w,
                 winSize.h,
                 'hanviet',
-                { kana: snapKana, hanViet: snapHanViet, read: snapRead },
+                { kana: snapKana, hanViet: snapHanViet, read: snapRead, autoHold: autoNextEnabled ? snapAutoHold : undefined },
                 SNAP_RANGE
               );
               if (newSnap) {
@@ -2108,7 +2151,7 @@ export default function App() {
                   winSize.w,
                   winSize.h,
                   'read',
-                  { kana: snapKana, hanViet: snapHanViet, read: snapRead },
+                  { kana: snapKana, hanViet: snapHanViet, read: snapRead, autoHold: autoNextEnabled ? snapAutoHold : undefined },
                   SNAP_RANGE
                 );
                 if (newSnap) {
@@ -2134,6 +2177,119 @@ export default function App() {
           onContextMenu={(e) => e.preventDefault()}
         >
           <Volume2 className="w-5 h-5 text-white" />
+        </button>
+      )}
+
+      {/* Draggable FAB 4: Hold to Pause & Reset Auto Flip/Next (Only appears when Auto Next is enabled on flashcard page) */}
+      {activeView === 'flashcard' && autoNextEnabled && (
+        <button
+          className={`fab fab-autohold ${isAutoHoldPressed ? 'pressed' : ''} ${isDragging && dragBtn === 'autohold' ? 'is-dragging' : ''}`}
+          id="autoHoldBtn"
+          title={isPcView ? 'Auto flip: Giữ để tạm dừng & đặt lại bộ đếm' : 'Auto flip: Giữ để tạm dừng & đặt lại / Kéo để chuyển vị trí'}
+          style={{
+            left: `${dragBtn === 'autohold' && dragPos ? dragPos.x : snapCoords.autoHold.x}px`,
+            top: `${dragBtn === 'autohold' && dragPos ? dragPos.y : snapCoords.autoHold.y}px`,
+            opacity: restingFabOpacity,
+            cursor: isPcView ? 'pointer' : undefined,
+            transition: dragBtn === 'autohold' ? 'none' : 'left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease',
+          }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            try {
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            } catch (err) {}
+            const now = performance.now();
+            dragStartRef.current = { x: e.clientX, y: e.clientY, time: now, moved: false, swipeStartTime: 0 };
+            pointerHistoryRef.current = [{ x: e.clientX, y: e.clientY, time: now }];
+            setDragOrigin({ x: snapCoords.autoHold.x + fabHalf, y: snapCoords.autoHold.y + fabHalf });
+            setDragBtn('autohold');
+            setIsDragging(false);
+            setIsAutoHoldPressed(true);
+            notifyInteraction();
+          }}
+          onPointerMove={(e) => {
+            if (dragBtn !== 'autohold' || isPcView) return;
+            const now = performance.now();
+            pointerHistoryRef.current.push({ x: e.clientX, y: e.clientY, time: now });
+            while (pointerHistoryRef.current.length > 2 && now - pointerHistoryRef.current[0].time > 140) {
+              pointerHistoryRef.current.shift();
+            }
+
+            const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
+            if (dist > 6) {
+              dragStartRef.current.moved = true;
+              setIsDragging(true);
+            }
+            if (dist >= 10 && !dragStartRef.current.swipeStartTime) {
+              dragStartRef.current.swipeStartTime = now;
+            }
+            setDragPos({ x: e.clientX - fabHalf, y: e.clientY - fabHalf });
+          }}
+          onPointerUp={(e) => {
+            e.preventDefault();
+            try {
+              (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            } catch (err) {}
+            setIsAutoHoldPressed(false);
+            notifyInteraction();
+
+            if (!isPcView) {
+              const now = performance.now();
+              const totalDx = e.clientX - dragStartRef.current.x;
+              const totalDy = e.clientY - dragStartRef.current.y;
+              const totalDist = Math.hypot(totalDx, totalDy);
+
+              const swipeDuration = dragStartRef.current.swipeStartTime
+                ? (now - dragStartRef.current.swipeStartTime)
+                : (now - dragStartRef.current.time);
+              const totalDuration = now - dragStartRef.current.time;
+
+              const history = pointerHistoryRef.current;
+              const recentPt = history.find((p) => now - p.time <= 100);
+              const recentDist = recentPt ? Math.hypot(e.clientX - recentPt.x, e.clientY - recentPt.y) : 0;
+
+              const isQuickSwipe = (totalDist >= 18 && (swipeDuration < 100 || totalDuration < 100)) || recentDist >= 20;
+
+              if (isQuickSwipe) {
+                const flickDx = recentPt ? e.clientX - recentPt.x : totalDx;
+                const flickDy = recentPt ? e.clientY - recentPt.y : totalDy;
+                const dirX = Math.abs(flickDx) > 8 ? flickDx : totalDx;
+                const dirY = Math.abs(flickDy) > 8 ? flickDy : totalDy;
+                const targetCorner = getSwipeCorner(dirX, dirY, e.clientX, e.clientY, winSize.w, winSize.h, snapAutoHold);
+                setSnapAutoHold(targetCorner);
+              } else if (dragStartRef.current.moved) {
+                const newSnap = findSnapPositionWithinRange(
+                  e.clientX,
+                  e.clientY,
+                  winSize.w,
+                  winSize.h,
+                  'autohold',
+                  { kana: snapKana, hanViet: snapHanViet, read: snapRead, autoHold: snapAutoHold },
+                  SNAP_RANGE
+                );
+                if (newSnap) {
+                  setSnapAutoHold(newSnap);
+                }
+              }
+            }
+
+            setIsDragging(false);
+            setDragOrigin(null);
+            setDragBtn(null);
+            setDragPos(null);
+          }}
+          onPointerCancel={(e) => {
+            e.preventDefault();
+            setIsAutoHoldPressed(false);
+            notifyInteraction();
+            setIsDragging(false);
+            setDragOrigin(null);
+            setDragBtn(null);
+            setDragPos(null);
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <Pause className="w-5 h-5 text-white" />
         </button>
       )}
 

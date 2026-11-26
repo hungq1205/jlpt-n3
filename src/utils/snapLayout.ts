@@ -11,6 +11,7 @@ export interface SnapCoordsResult {
   kana: Point;
   hanViet: Point;
   read: Point;
+  autoHold: Point;
 }
 
 /**
@@ -26,7 +27,8 @@ export function getSnapCoords(
   arg4?: number,
   arg5?: number,
   arg6 = 50,
-  arg7 = 10
+  arg7 = 10,
+  posAutoHold?: SnapPosition
 ): SnapCoordsResult {
   let posRead: SnapPosition | undefined = undefined;
   let windowWidth: number;
@@ -41,7 +43,7 @@ export function getSnapCoords(
     btnSize = arg5 ?? 50;
     gap = arg6 ?? 10;
   } else {
-    // Called as: getSnapCoords(posKana, posHanViet, posRead, windowWidth, windowHeight, btnSize, gap)
+    // Called as: getSnapCoords(posKana, posHanViet, posRead, windowWidth, windowHeight, btnSize, gap, posAutoHold)
     posRead = arg3;
     windowWidth = arg4 ?? 400;
     windowHeight = arg5 ?? 700;
@@ -79,15 +81,19 @@ export function getSnapCoords(
     kana: { x: 0, y: 0 },
     hanViet: { x: 0, y: 0 },
     read: { x: 0, y: 0 },
+    autoHold: { x: 0, y: 0 },
   };
 
-  // Fixed order for clustered buttons: Han-Viet first, then Kana, then Read
-  const allBtns: Array<{ id: 'hanViet' | 'kana' | 'read'; snap: SnapPosition }> = [
+  // Fixed order for clustered buttons: Han-Viet first, then Kana, then Read, then AutoHold
+  const allBtns: Array<{ id: 'hanViet' | 'kana' | 'read' | 'autoHold'; snap: SnapPosition }> = [
     { id: 'hanViet', snap: posHanViet },
     { id: 'kana', snap: posKana },
   ];
   if (posRead) {
     allBtns.push({ id: 'read', snap: posRead });
+  }
+  if (posAutoHold) {
+    allBtns.push({ id: 'autoHold', snap: posAutoHold });
   }
 
   for (const p of positions) {
@@ -137,6 +143,9 @@ export function getSnapCoords(
   if (!posRead) {
     res.read = getBase('BR');
   }
+  if (!posAutoHold) {
+    res.autoHold = getBase('BL');
+  }
 
   return res;
 }
@@ -154,8 +163,8 @@ export function findSnapPositionWithinRange(
   y: number,
   windowWidth: number,
   windowHeight: number,
-  forBtn: 'kana' | 'hanviet' | 'read',
-  activeSnaps: { kana: SnapPosition; hanViet: SnapPosition; read?: SnapPosition } | SnapPosition,
+  forBtn: 'kana' | 'hanviet' | 'read' | 'autohold',
+  activeSnaps: { kana: SnapPosition; hanViet: SnapPosition; read?: SnapPosition; autoHold?: SnapPosition } | SnapPosition,
   maxDist = SNAP_RANGE
 ): SnapPosition | null {
   const positions: SnapPosition[] = ['TL', 'TM', 'TR', 'LM', 'RM', 'BL', 'BM', 'BR'];
@@ -171,8 +180,16 @@ export function findSnapPositionWithinRange(
     const testKana = forBtn === 'kana' ? pos : snaps.kana;
     const testHV = forBtn === 'hanviet' ? pos : snaps.hanViet;
     const testRead = forBtn === 'read' ? pos : snaps.read;
-    const coords = getSnapCoords(testKana, testHV, testRead, windowWidth, windowHeight);
-    const targetPt = forBtn === 'kana' ? coords.kana : forBtn === 'hanviet' ? coords.hanViet : coords.read;
+    const testAutoHold = forBtn === 'autohold' ? pos : snaps.autoHold;
+    const coords = getSnapCoords(testKana, testHV, testRead, windowWidth, windowHeight, 50, 10, testAutoHold);
+    const targetPt =
+      forBtn === 'kana'
+        ? coords.kana
+        : forBtn === 'hanviet'
+        ? coords.hanViet
+        : forBtn === 'read'
+        ? coords.read
+        : coords.autoHold;
     const center = { x: targetPt.x + 25, y: targetPt.y + 25 };
     const dist = Math.hypot(x - center.x, y - center.y);
     if (dist < minDist) {
