@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
-import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders, GraduationCap, Moon, Pause } from 'lucide-react';
+import { Volume2, Search, RotateCw, RefreshCw, ChevronLeft, ChevronRight, Menu, Settings, ArrowLeft, BookOpen, Layers, List, Sliders, GraduationCap, Moon, Pause, Play } from 'lucide-react';
 import { LESSONS, Lesson, Flashcard, FlashcardType } from './data/flashcards';
 import { speakJapanese, speakVietnamese } from './utils/speech';
 import { getHanViet, getKanjiMeaning } from './data/hanVietDict';
@@ -111,6 +111,7 @@ export default function App() {
   const [showKana, setShowKana] = useState<boolean>(false);
   const [isFabPressed, setIsFabPressed] = useState<boolean>(false);
   const [isAutoHoldPressed, setIsAutoHoldPressed] = useState<boolean>(false);
+  const [isAutoPaused, setIsAutoPaused] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [isHolding, setIsHolding] = useState<boolean>(false);
   const [interactionTick, setInteractionTick] = useState<number>(0);
@@ -378,6 +379,7 @@ export default function App() {
       dragBtn !== null ||
       isHolding ||
       isAutoHoldPressed ||
+      isAutoPaused ||
       showKana ||
       order.length <= 1
     ) {
@@ -417,6 +419,7 @@ export default function App() {
     dragBtn,
     isHolding,
     isAutoHoldPressed,
+    isAutoPaused,
     showKana,
     interactionTick,
     pos,
@@ -425,6 +428,12 @@ export default function App() {
     order.length,
     handleNext,
   ]);
+
+  useEffect(() => {
+    if (!autoNextEnabled) {
+      setIsAutoPaused(false);
+    }
+  }, [autoNextEnabled]);
 
   useEffect(() => {
     if (!flipped || !autoNextEnabled || autoNextFlipDuration <= 0 || activeView !== 'flashcard') {
@@ -2180,12 +2189,18 @@ export default function App() {
         </button>
       )}
 
-      {/* Draggable FAB 4: Hold to Pause & Reset Auto Flip/Next (Only appears when Auto Next is enabled on flashcard page) */}
+      {/* Draggable FAB 4: Click to Toggle Stop/Resume, Hold to Pause & Reset Auto Flip/Next */}
       {activeView === 'flashcard' && autoNextEnabled && (
         <button
-          className={`fab fab-autohold ${isAutoHoldPressed ? 'pressed' : ''} ${isDragging && dragBtn === 'autohold' ? 'is-dragging' : ''}`}
+          className={`fab fab-autohold ${isAutoHoldPressed ? 'pressed' : ''} ${isAutoPaused ? 'active-mode' : ''} ${isDragging && dragBtn === 'autohold' ? 'is-dragging' : ''}`}
           id="autoHoldBtn"
-          title={isPcView ? 'Auto flip: Giữ để tạm dừng & đặt lại bộ đếm' : 'Auto flip: Giữ để tạm dừng & đặt lại / Kéo để chuyển vị trí'}
+          title={
+            isAutoPaused
+              ? 'Auto flip đang dừng: Chạm để tiếp tục'
+              : isPcView
+              ? 'Auto flip: Chạm để dừng / Giữ để tạm dừng khi giữ'
+              : 'Auto flip: Chạm để dừng / Giữ để tạm dừng khi giữ / Kéo để chuyển vị trí'
+          }
           style={{
             left: `${dragBtn === 'autohold' && dragPos ? dragPos.x : snapCoords.autoHold.x}px`,
             top: `${dragBtn === 'autohold' && dragPos ? dragPos.y : snapCoords.autoHold.y}px`,
@@ -2233,8 +2248,15 @@ export default function App() {
             setIsAutoHoldPressed(false);
             notifyInteraction();
 
-            if (!isPcView) {
-              const now = performance.now();
+            const now = performance.now();
+            const holdDuration = now - dragStartRef.current.time;
+            const isShortTap = holdDuration < 250;
+
+            if (isPcView) {
+              if (isShortTap) {
+                setIsAutoPaused((prev) => !prev);
+              }
+            } else {
               const totalDx = e.clientX - dragStartRef.current.x;
               const totalDy = e.clientY - dragStartRef.current.y;
               const totalDist = Math.hypot(totalDx, totalDy);
@@ -2270,6 +2292,8 @@ export default function App() {
                 if (newSnap) {
                   setSnapAutoHold(newSnap);
                 }
+              } else if (isShortTap) {
+                setIsAutoPaused((prev) => !prev);
               }
             }
 
@@ -2289,7 +2313,11 @@ export default function App() {
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
-          <Pause className="w-5 h-5 text-white" />
+          {isAutoPaused ? (
+            <Play className="w-5 h-5 text-white" />
+          ) : (
+            <Pause className="w-5 h-5 text-white" />
+          )}
         </button>
       )}
 

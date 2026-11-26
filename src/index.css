@@ -607,6 +607,25 @@ rt.kana-overlay {
   box-shadow: 0 0 0 4px rgba(251, 191, 36, .5), 0 6px 20px rgba(217, 119, 6, .6);
 }
 
+.fab-autohold.active-mode {
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(248, 113, 113, .45), 0 6px 20px rgba(239, 68, 6, .55);
+  animation: pulse-ring-autopause 1.6s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+.fab-autohold.active-mode:hover {
+  background: #dc2626;
+}
+
+@keyframes pulse-ring-autopause {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, .38), 0 4px 14px rgba(239, 68, 68, .45);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(248, 113, 113, .6), 0 8px 22px rgba(239, 68, 68, .6);
+  }
+}
+
 
 /* Pulse animation when tap-select mode is armed */
 .fab-hanviet.active-mode {
