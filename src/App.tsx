@@ -111,6 +111,20 @@ export default function App() {
   const [showKana, setShowKana] = useState<boolean>(false);
   const [isFabPressed, setIsFabPressed] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [isHolding, setIsHolding] = useState<boolean>(false);
+  const [interactionTick, setInteractionTick] = useState<number>(0);
+  const activePointersRef = useRef<Set<number>>(new Set());
+  const isTouchActiveRef = useRef<boolean>(false);
+  const lastInteractionBumpRef = useRef<number>(0);
+
+  const notifyInteraction = useCallback((throttleMs = 0) => {
+    const now = Date.now();
+    if (throttleMs > 0 && now - lastInteractionBumpRef.current < throttleMs) {
+      return;
+    }
+    lastInteractionBumpRef.current = now;
+    setInteractionTick((t) => t + 1);
+  }, []);
 
   // When lesson changes, reset order and position
   useEffect(() => {
@@ -265,6 +279,93 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [pos, selectedLessonId, autoReadEnabled, activeView, currentCard, readCurrentCardFront]);
 
+  // Pause auto-flip/auto-next while user holds down and reset timer on any flashcard interaction
+  useEffect(() => {
+    if (activeView !== 'flashcard') {
+      activePointersRef.current.clear();
+      isTouchActiveRef.current = false;
+      setIsHolding(false);
+      return;
+    }
+
+    const syncHolding = () => {
+      setIsHolding(activePointersRef.current.size > 0 || isTouchActiveRef.current);
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') {
+        activePointersRef.current.add(e.pointerId);
+      }
+      syncHolding();
+      notifyInteraction();
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.buttons === 0 && activePointersRef.current.size > 0) {
+        activePointersRef.current.clear();
+        syncHolding();
+      }
+    };
+
+    const handlePointerEnd = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') {
+        activePointersRef.current.delete(e.pointerId);
+      }
+      syncHolding();
+      notifyInteraction();
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      isTouchActiveRef.current = e.touches.length > 0;
+      syncHolding();
+      notifyInteraction();
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      isTouchActiveRef.current = e.touches.length > 0;
+      syncHolding();
+      notifyInteraction();
+    };
+
+    const handleWheel = () => {
+      notifyInteraction(150);
+    };
+
+    const handleKeyDown = () => {
+      notifyInteraction();
+    };
+
+    const handleClearHold = () => {
+      activePointersRef.current.clear();
+      isTouchActiveRef.current = false;
+      setIsHolding(false);
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('pointermove', handlePointerMove, true);
+    window.addEventListener('pointerup', handlePointerEnd, true);
+    window.addEventListener('pointercancel', handlePointerEnd, true);
+    window.addEventListener('touchstart', handleTouchStart, true);
+    window.addEventListener('touchend', handleTouchEnd, true);
+    window.addEventListener('touchcancel', handleTouchEnd, true);
+    window.addEventListener('wheel', handleWheel, { capture: true, passive: true });
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('blur', handleClearHold);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('pointerup', handlePointerEnd, true);
+      window.removeEventListener('pointercancel', handlePointerEnd, true);
+      window.removeEventListener('touchstart', handleTouchStart, true);
+      window.removeEventListener('touchend', handleTouchEnd, true);
+      window.removeEventListener('touchcancel', handleTouchEnd, true);
+      window.removeEventListener('wheel', handleWheel, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('blur', handleClearHold);
+    };
+  }, [activeView, notifyInteraction]);
+
   // Auto-next & auto-flip flashcard timer
   useEffect(() => {
     if (
@@ -272,6 +373,8 @@ export default function App() {
       activeView !== 'flashcard' ||
       isHanVietMode ||
       isDragging ||
+      dragBtn !== null ||
+      isHolding ||
       showKana ||
       order.length <= 1
     ) {
@@ -308,7 +411,10 @@ export default function App() {
     activeView,
     isHanVietMode,
     isDragging,
+    dragBtn,
+    isHolding,
     showKana,
+    interactionTick,
     pos,
     flipped,
     selectedLessonId,
@@ -1007,7 +1113,11 @@ export default function App() {
               </section>
 
               {/* Back Face (Reveals all other information) */}
-              <section className={`face back ${isAutoFlipped && flipped ? 'show-kana' : ''}`} id="back">
+              <section
+                className={`face back ${isAutoFlipped && flipped ? 'show-kana' : ''}`}
+                id="back"
+                onScroll={() => notifyInteraction(150)}
+              >
                 <div className="label">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {currentCard.partOfSpeech && (
